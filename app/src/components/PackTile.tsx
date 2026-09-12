@@ -1,10 +1,12 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { PackSku } from "@grailhaus/shared";
 import { accents, fonts, typography } from "../theme/tokens";
 import { packTile as packTileCopy } from "../content/copy";
 import { WatchDial } from "./WatchDial";
 import { StockBar } from "./StockBar";
+import { Crown } from "./Crown";
+import { PACK_RENDER } from "../content/localArt";
 
 /** Display-only labels/art — matches the mockup's own tier vocabulary
  * (CASUAL/MID/HIGH-STAKES, ENTRY/SIGNATURE/GRAIL). Not admin-configurable:
@@ -30,10 +32,9 @@ export function tierLabel(sku: { tier: string }): string {
   return TIER_LABEL[sku.tier] ?? sku.tier.replace(/_/g, " ").toUpperCase();
 }
 
-/** The middle-priced tier per category gets the mockup's bigger vertical
- * "hero" treatment; the other two are compact rows. Cards-only — watches
- * render every tier as an equal hairline row (no hero), per the mockup. */
-export const HERO_TIER = new Set(["vault_break"]);
+/** The middle-priced tier per category gets the "MOST POPULAR" badge treatment — GrailhausPacks.js
+ * marks Vault Break (cards) and Archive (watches) exactly this way, one per category. */
+export const HERO_TIER = new Set(["vault_break", "archive"]);
 
 export const ART_GRADIENT: Record<string, [string, string]> = {
   street_rip: ["#E4FBFF", "#1668D8"],
@@ -53,7 +54,13 @@ export function PackTile({
   onBuy: (quantity: 1 | 10) => void;
   disabled?: boolean;
 }) {
-  if (sku.category === "watches") return <WatchTileRow sku={sku} onPress={() => onBuy(1)} disabled={disabled} />;
+  // Cards is the only multi-item, buy-1-or-×10 category — every other category (watches,
+  // handbags, and anything added later) is one item per pack, one at a time, so it gets the
+  // same single-item pack row regardless of which category it is. Matching this by exclusion
+  // (not `=== "watches"`) is what makes a newly added category (e.g. handbags, which today has
+  // only a single drop-style pack, no evergreen tiers yet) render correctly the instant it has
+  // real evergreen SKUs, with no code change here.
+  if (sku.category !== "cards") return <WatchTileRow sku={sku} onPress={() => onBuy(1)} disabled={disabled} />;
   return <CardTile sku={sku} onBuy={onBuy} disabled={disabled} />;
 }
 
@@ -130,29 +137,75 @@ function CardTile({
   );
 }
 
-/** Watches: a single hairline-separated row per tier — a lit circular dial
- * on a plinth instead of a rectangular pack, quiet cream type, no bulk badge,
- * no loud stock bar unless genuinely low. Tapping the whole row opens the
- * buy sheet; there's no button drawn on the tile itself, matching the
- * mockup's calmer "choosing one thing, not shopping a grid" watches rows. */
+function darken(hex: string, amount: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
+  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+/** Same real-pack-box-and-tier-chip treatment as Shelf's cards TierRow, per GrailhausPacks.js —
+ * the reference's own WATCH_TIERS chips are just bigger (30x30, crown + name inside) than the
+ * cards ones (18x25, crown only, name below); everything else is the identical `.pack` box. */
 function WatchTileRow({ sku, onPress, disabled }: { sku: PackSku; onPress: () => void; disabled?: boolean }) {
   const art = ART_GRADIENT[sku.tier] ?? ART_GRADIENT.reserve;
+  const render = PACK_RENDER[sku.tier];
+  const isFeatured = HERO_TIER.has(sku.tier);
 
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={[styles.watchRow, disabled && styles.cardDisabled]}>
-      <WatchDial art={art} size={62} />
-      <View style={styles.watchInfo}>
-        <Text style={styles.watchTier}>{tierLabel(sku)}</Text>
-        <Text style={styles.watchName} numberOfLines={1}>
-          {sku.name}
-        </Text>
+    <View style={[styles.watchPack, isFeatured && styles.watchPackPopular]}>
+      {isFeatured && (
+        <LinearGradient colors={["#3a1263", "#22093f"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.badge}>
+          <Crown />
+          <Text style={styles.badgeText}>{packTileCopy.mostPopular}</Text>
+        </LinearGradient>
+      )}
+
+      {/* GrailhausPacks.js's own real box render, bled off the row's edges — falls back to the
+          plain circular dial for any tier with no render yet. */}
+      <View style={styles.watchPhotoWrap}>
+        {render ? (
+          <Image source={render} style={styles.watchPhoto} resizeMode="contain" />
+        ) : (
+          <WatchDial art={art} size={62} />
+        )}
+      </View>
+
+      <Pressable onPress={onPress} disabled={disabled} style={[styles.watchBody, disabled && styles.cardDisabled]}>
+        <View style={styles.packTop}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.watchTier}>{tierLabel(sku)}</Text>
+            <Text style={styles.watchName} numberOfLines={1}>
+              {sku.name}
+            </Text>
+          </View>
+          <Text style={typography.priceWatches}>${(sku.priceCents / 100).toLocaleString()}</Text>
+        </View>
+
         <Text style={styles.watchSub}>{packTileCopy.countLabel(sku.category, sku.itemCount)}</Text>
         <StockBar remaining={sku.stockRemaining} max={sku.maxStock} />
-      </View>
-      <View style={styles.watchPriceWrap}>
-        <Text style={typography.priceWatches}>${(sku.priceCents / 100).toLocaleString()}</Text>
-      </View>
-    </Pressable>
+
+        {/* Real rarity tiers this SKU draws from — reference's own WATCH_TIERS chip shape (crown
+            + name inside a taller chip), colored from the tier's real admin-configured hex. */}
+        <View style={styles.tierGroup}>
+          {sku.rarityTiers.map((t) => (
+            <LinearGradient
+              key={t.level}
+              colors={[t.colorHex, darken(t.colorHex, 0.55)]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.watchChip, { borderColor: `${t.colorHex}b0` }]}
+            >
+              <Crown w={13} h={8} fill="#fff" />
+              <Text style={styles.watchChipLabel} numberOfLines={1}>
+                {t.name}
+              </Text>
+            </LinearGradient>
+          ))}
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
@@ -243,17 +296,56 @@ const styles = StyleSheet.create({
   },
   buyTenLabel: { fontFamily: fonts.black, fontSize: 13.5, color: "#FFFFFF" },
 
-  watchRow: {
+  // Same exact `.pack`/`.packImgWrap`/`.badge` box as Shelf's cards TierRow, per
+  // GrailhausPacks.js — watches use the identical box, just the "watch" tier-chip variant.
+  watchPack: {
+    minHeight: 160,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(255,255,255,0.035)",
+  },
+  watchPackPopular: {
+    borderColor: "#a855f7",
+    backgroundColor: "rgba(40,16,66,0.9)",
+    shadowColor: "#a855f7",
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  badge: {
+    position: "absolute",
+    right: -8,
+    top: -15,
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#b26bf5",
+    zIndex: 2,
   },
-  watchInfo: { flex: 1, minWidth: 0 },
+  badgeText: { color: "#fff", fontSize: 11, fontWeight: "800", letterSpacing: 1.1 },
+  watchPhotoWrap: { position: "absolute", left: -4, top: -10, bottom: -10, width: 150, borderRadius: 10, overflow: "hidden" },
+  watchPhoto: { width: "100%", height: "100%" },
+  watchBody: { flex: 1, paddingLeft: 158, paddingRight: 10, paddingTop: 14, paddingBottom: 16 },
+  packTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
   watchTier: typography.tierPillWatches,
   watchName: { ...typography.packNameWatches, marginTop: 5 },
-  watchSub: { ...typography.packSubWatches, marginTop: 3 },
-  watchPriceWrap: { alignItems: "flex-end", flexShrink: 0 },
+  watchSub: { ...typography.packSubWatches, marginTop: 8 },
+  // Reference's WATCH_TIERS chip: bigger than the cards one, crown + tier name inside.
+  tierGroup: { flexDirection: "row", gap: 6, marginTop: 10, flexWrap: "wrap" },
+  watchChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    height: 26,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  watchChipLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.3, color: "#fff" },
 });

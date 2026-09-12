@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
   watchCardFace: { height: 132, alignItems: "center", justifyContent: "center" },
   cardName: { ...typography.footNote, fontWeight: "800" as const, color: "#fff", marginTop: 9, fontSize: 11.5 },
   cardSub: { ...typography.footNote, marginTop: 2, fontSize: 10 },
-  cardPrice: { ...typography.title, fontSize: 16, marginTop: 7 },
+  cardPrice: { ...typography.title, fontSize: 16, marginTop: 7, color: "#fff" },
   empty: { ...typography.sectionSub, textAlign: "center", marginTop: 60, width: "100%" },
 });
 

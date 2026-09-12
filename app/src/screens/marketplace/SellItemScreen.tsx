@@ -3,13 +3,13 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { CardFace } from "../../components/CardFace";
 import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { marketplaceService, type FeePreview } from "../../services/marketplaceService";
 import { useListingViewModel } from "../../viewmodels/useListingViewModel";
-import { useTabBarClearance } from "../../navigation/tabBarVisibility";
 import { colors, typography } from "../../theme/tokens";
 import { sellItem as copy } from "../../content/copy";
 import type { CollectionStackParamList } from "../../navigation/CollectionStack";
@@ -33,7 +33,7 @@ export function SellItemScreen() {
   const { owned } = useRoute<Route>().params;
   const item = owned.item;
   const { isWorking, createListing } = useListingViewModel();
-  const tabBarClearance = useTabBarClearance();
+  const insets = useSafeAreaInsets();
 
   const [priceText, setPriceText] = useState(String(Math.round(item.currentValueCents / 100)));
   const [preview, setPreview] = useState<FeePreview | null>(null);
@@ -81,7 +81,7 @@ export function SellItemScreen() {
           <Text style={styles.doneTitle}>{copy.liveTitle}</Text>
           <Text style={styles.doneBody}>{copy.liveBody(listedPriceCents)}</Text>
         </View>
-        <View style={[styles.footer, { paddingBottom: tabBarClearance }]}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <Pressable style={styles.primaryButton} onPress={() => navigation.popToTop()}>
             <LinearGradient colors={["#63E85C", "#12864A"]} style={StyleSheet.absoluteFill} />
             <Text style={styles.primaryLabel}>{copy.done}</Text>
@@ -144,7 +144,7 @@ export function SellItemScreen() {
         {error && <Text style={styles.error}>{error}</Text>}
       </View>
 
-      <View style={[styles.footer, { paddingBottom: tabBarClearance }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
           style={[styles.primaryButton, (isWorking || priceCents <= 0) && styles.disabled]}
           onPress={handleConfirm}

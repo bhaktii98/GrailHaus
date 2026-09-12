@@ -12,7 +12,7 @@ import { itemArtGradient } from "../../content/cardArt";
 import { useSessionViewModel } from "../../viewmodels/useSessionViewModel";
 import { useListingViewModel } from "../../viewmodels/useListingViewModel";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
-import { useTabBarClearance } from "../../navigation/tabBarVisibility";
+import { useHideTabBarWhileFocused } from "../../navigation/tabBarVisibility";
 import { marketplaceService, type FeePreview } from "../../services/marketplaceService";
 import { colors, ink, typography } from "../../theme/tokens";
 import { listingDetail as copy, editPriceSheet as editCopy } from "../../content/copy";
@@ -41,7 +41,7 @@ export function ListingDetailScreen() {
   const session = useSessionViewModel();
   const { isWorking, delist } = useListingViewModel();
   const isMine = session.profile?.username != null && session.profile.username === listing.seller.username;
-  const tabBarClearance = useTabBarClearance();
+  useHideTabBarWhileFocused();
 
   async function handleDelist() {
     const result = await delist(listing.id);
@@ -52,7 +52,7 @@ export function ListingDetailScreen() {
   return (
     <View style={styles.fill}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 160 + tabBarClearance }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 160 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash
@@ -111,7 +111,7 @@ export function ListingDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { bottom: tabBarClearance }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
         {isMine ? (
           <>
             <Pressable style={styles.editPriceButton} onPress={() => setEditOpen(true)} disabled={isWorking}>
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   sellerInfo: { flex: 1, minWidth: 0 },
   sellerName: { ...typography.body, fontSize: 13 },
   sellerMeta: { ...typography.footNote, marginTop: 1 },
-  footer: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 22, gap: 10 },
+  footer: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 22, gap: 10, backgroundColor: ink.groundDeep },
   editPriceButton: {
     height: 54,
     borderRadius: 16,

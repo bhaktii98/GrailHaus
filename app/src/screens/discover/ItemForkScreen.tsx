@@ -11,7 +11,6 @@ import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { marketplaceService } from "../../services/marketplaceService";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
-import { useTabBarClearance } from "../../navigation/tabBarVisibility";
 import { colors, ink, typography } from "../../theme/tokens";
 import { itemFork as copy, itemDetail as itemDetailCopy } from "../../content/copy";
 import type { AppStackParamList } from "../../navigation/AppNavigator";
@@ -45,7 +44,6 @@ export function ItemForkScreen() {
   // other register, same fallback rule ShelfScreen/HomeScreen already use.
   const isWatch = category === "watches";
   const isCards = category === "cards";
-  const tabBarClearance = useTabBarClearance();
 
   const listingsQuery = useQuery({
     queryKey: ["listings", category],
@@ -106,7 +104,10 @@ export function ItemForkScreen() {
 
   return (
     <View style={styles.fill}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: 140 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash
             would stay pinned to the viewport as the header/hero scroll away, bleeding into
             whatever section (value, fork options) scrolls into that same screen region. */}
@@ -128,7 +129,7 @@ export function ItemForkScreen() {
             {isCards ? (
               <CardFace gradient={itemArtGradient(detail)} imageUrl={detail.textureUrl} width={124} height={173} borderColor="rgba(255,215,94,0.78)" />
             ) : (
-              <WatchDial art={itemArtGradient(detail)} size={124} />
+              <WatchDial art={itemArtGradient(detail)} imageUrl={detail.textureUrl} size={124} />
             )}
             <View style={styles.heroInfo}>
               <Text style={styles.name}>{(detail.cardTitle ?? detail.watchName ?? detail.name).toUpperCase()}</Text>
@@ -202,7 +203,7 @@ export function ItemForkScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: tabBarClearance }]}>
+      <View style={[styles.footer, { paddingBottom: 28 + insets.bottom }]}>
         <Text style={styles.howTitle}>{copy.howToGet}</Text>
         <View style={styles.forkRow}>
           <Pressable style={[styles.forkButton, styles.forkLuck]} onPress={handleTryLuck}>
@@ -299,8 +300,15 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
   },
   statLabel: { fontSize: 9, fontWeight: "600" as const, letterSpacing: 1.3, color: "rgba(255,255,255,0.62)" },
-  statValue: { ...typography.title, fontSize: 19, marginTop: 3 },
-  footer: { padding: 20, paddingBottom: 28 },
+  statValue: { ...typography.title, fontSize: 19, marginTop: 3, color: "#fff" },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 20,
+    backgroundColor: ink.groundDeep,
+  },
   howTitle: { ...typography.chipLabel, fontSize: 15, marginBottom: 11 },
   forkRow: { flexDirection: "row", gap: 10 },
   forkButton: {

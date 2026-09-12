@@ -1,21 +1,42 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useHideTabBarOnScroll, useTabBarClearance } from "../../navigation/tabBarVisibility";
 import { useSessionViewModel } from "../../viewmodels/useSessionViewModel";
 import { useDiscoverHubViewModel } from "../../viewmodels/useDiscoverHubViewModel";
 import { useCollectionsViewModel } from "../../viewmodels/useCollectionsViewModel";
-import { colors, typography } from "../../theme/tokens";
+import { colors, fonts, typography } from "../../theme/tokens";
 import { discover as copy } from "../../content/copy";
 import type { DiscoverStackParamList } from "../../navigation/DiscoverStack";
 
 type Nav = NativeStackNavigationProp<DiscoverStackParamList, "Discover">;
 
+/**
+ * Reference door art from GrailhausDiscover.js's `IMAGES` table — placeholder-only, NOT cleared
+ * for release. The Collections and Trading Cards images both include a small Pokémon card
+ * (Pikachu) rendering, and Collections also shows a real Nike swoosh on a sneaker — both real
+ * third-party trademarks this app has no license for; the Watches/Handbags renders visually echo
+ * a Rolex Daytona and a Hermès Birkin's trade dress closely enough to carry the same risk even
+ * without literal logos/text visible. Same call as Home's `heroArt`/`cardArt`/`watchArt`: wired in
+ * now to see the full visual, needs real commissioned/licensed art (or a plain gradient fallback)
+ * before any real release.
+ */
+const doorArt: Record<string, number> = {
+  cards: require("../../../assets/discover-cards.png"),
+  watches: require("../../../assets/discover-watches.png"),
+  handbags: require("../../../assets/discover-handbags.png"),
+};
+const collectionsArt = require("../../../assets/discover-collections.png");
+
 /** Darkens a `#rrggbb` hex color toward black by `amount` (0-1) — same helper as
  * CategorySwitch.tsx, used here to synthesize each door's two-stop gradient from a category's
- * single admin-configured accent color. */
+ * single admin-configured accent color. Still the fallback for any category not named in
+ * `DOOR_STYLE` below (e.g. one added via the admin dashboard tomorrow) — that one keeps
+ * generalizing from the category's own `paletteAccent`, same as before this pass. */
 function darken(hex: string, amount: number): string {
   const n = parseInt(hex.replace("#", ""), 16);
   const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
@@ -23,6 +44,31 @@ function darken(hex: string, amount: number): string {
   const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
+
+/**
+ * Exact per-door colors from GrailhausDiscover.js's own `ROWS` table — cards and watches share
+ * the same warm gold register there (unlike Home's own doors, which split cards=violet/
+ * watches=gold from theme/tokens.ts's `accents`), and handbags gets its own coral/salmon tone.
+ * Deliberately hardcoded by known category id rather than derived from each category's
+ * admin-configurable `paletteAccent` — the user asked for this exact palette, not the generic
+ * one — but any category NOT in this table (added later, e.g. via the admin dashboard) still
+ * falls back to deriving its two-stop gradient from its own `paletteAccent` via `darken()`, so
+ * this doesn't regress the "a new category needs no app change" guarantee for anything unknown.
+ */
+const DOOR_STYLE: Record<
+  string,
+  { bg: [string, string]; border: string; kickerColor: string; accent: string }
+> = {
+  cards: { bg: ["#241804", "#120a02"], border: "rgba(216,170,60,0.55)", kickerColor: "#e0b34a", accent: "#e8bb4e" },
+  watches: { bg: ["#1f1603", "#0f0902"], border: "rgba(216,170,60,0.5)", kickerColor: "#e0b34a", accent: "#f0c247" },
+  handbags: { bg: ["#2a1209", "#150803"], border: "rgba(226,140,105,0.45)", kickerColor: "#e79a78", accent: "#f0a988" },
+};
+const COLLECTIONS_STYLE = {
+  bg: ["#2b0f52", "#160727"] as [string, string],
+  border: "rgba(168,85,247,0.5)",
+  kickerColor: "#c9a3ff",
+  accent: "#c084fc",
+};
 
 /**
  * Discover is the surface where every category sits side by side (mockup 17a's cards/watches
@@ -38,6 +84,8 @@ export function DiscoverScreen() {
   const session = useSessionViewModel();
   const hub = useDiscoverHubViewModel();
   const collections = useCollectionsViewModel();
+  const scrollHandler = useHideTabBarOnScroll();
+  const tabBarClearance = useTabBarClearance();
 
   return (
     <View style={styles.fill}>
@@ -46,6 +94,12 @@ export function DiscoverScreen() {
         locations={[0, 0.36, 1]}
         style={styles.base}
       />
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: tabBarClearance }}
+      >
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.brandRow}>
           <Image source={require("../../../assets/logo.png")} style={styles.logo} resizeMode="contain" />
@@ -53,13 +107,16 @@ export function DiscoverScreen() {
         </View>
         {session.balanceCents != null && (
           <View style={styles.balancePill}>
-            <LinearGradient colors={["#FFE27A", "#E0A016"]} style={styles.coin} />
+            <LinearGradient colors={["#ffeaa0", "#d79b21", "#96650d"]} style={styles.coin} />
             <Text style={styles.balanceText}>{(session.balanceCents / 100).toLocaleString()}</Text>
           </View>
         )}
       </View>
 
-      <Text style={styles.headline}>{copy.headline}</Text>
+      <Text style={styles.headline}>
+        {copy.headlineLead}
+        <Text style={styles.headlineAccent}>{copy.headlineAccent}</Text>
+      </Text>
       <Text style={styles.body}>{copy.body}</Text>
 
       {/* Lands on Cards' own real search (TextInput, filters by name/set) with the keyboard
@@ -75,33 +132,62 @@ export function DiscoverScreen() {
 
       <View style={styles.doors}>
         {hub.byCategory.map((c) => {
-          const top = c.paletteAccent;
-          const bottom = darken(c.paletteAccent, 0.55);
+          const known = DOOR_STYLE[c.categoryId];
+          const bg: [string, string] = known?.bg ?? [c.paletteAccent, darken(c.paletteAccent, 0.55)];
+          const border = known?.border ?? `${c.paletteAccent}80`;
+          const kickerColor = known?.kickerColor ?? c.paletteAccent;
+          const accent = known?.accent ?? c.paletteAccent;
+          const art = doorArt[c.categoryId];
           return (
             <Pressable
               key={c.categoryId}
               style={styles.door}
               onPress={() => navigation.navigate("DiscoverCategory", { category: c.categoryId })}
             >
-              <LinearGradient colors={[`${top}3D`, `${bottom}1A`]} style={StyleSheet.absoluteFill} />
-              <View style={[styles.doorBorder, { borderColor: `${top}80` }]} />
-              <Text style={[styles.doorEyebrow, { color: top }]}>{c.label.toUpperCase()}</Text>
-              <Text style={styles.doorTitle}>{c.label} Discovery</Text>
+              <LinearGradient colors={bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              <View style={[styles.doorBorder, { borderColor: border }]} />
+              <Text style={[styles.doorEyebrow, { color: kickerColor }]}>{c.label.toUpperCase()}</Text>
+              <Text style={styles.doorTitle}>
+                {c.label}
+                {"\n"}
+                <Text style={{ color: accent }}>Discovery</Text>
+              </Text>
               <Text style={styles.doorSummary}>{copy.doorSummary(c.itemCount, c.tierCount, c.listedNow)}</Text>
+              <Text style={styles.doorBlurb}>{copy.doorBlurb[c.categoryId] ?? copy.doorBlurbFallback}</Text>
+              {/* Bounded corner thumbnail, not a full-bleed panel — sized to the source art's own
+                  ratio so `cover` shows the whole picture with no crop, small enough to sit clear
+                  of the row's text. */}
+              {art && (
+                <View style={[styles.doorPhoto, { borderColor: border }]}>
+                  <Image source={art} style={styles.doorPhotoImg} resizeMode="cover" />
+                </View>
+              )}
             </Pressable>
           );
         })}
 
         <Pressable style={styles.door} onPress={() => navigation.navigate("Collections")}>
-          <LinearGradient colors={["rgba(255,255,255,0.14)", "rgba(255,255,255,0.04)"]} style={StyleSheet.absoluteFill} />
-          <View style={[styles.doorBorder, { borderColor: "rgba(255,255,255,0.28)" }]} />
-          <Text style={styles.doorEyebrow}>{copy.collectionsDoor.eyebrow}</Text>
+          <LinearGradient
+            colors={COLLECTIONS_STYLE.bg}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[styles.doorBorder, { borderColor: COLLECTIONS_STYLE.border }]} />
+          <Text style={[styles.doorEyebrow, { color: COLLECTIONS_STYLE.kickerColor }]}>
+            {copy.collectionsDoor.eyebrow}
+          </Text>
           <Text style={styles.doorTitle}>{copy.collectionsDoor.title}</Text>
           <Text style={styles.doorSummary}>
             {copy.collectionsDoorSummary(collections.groups.length, collections.totalItemCount)}
           </Text>
+          <Text style={styles.doorBlurb}>{copy.collectionsDoor.blurb}</Text>
+          <View style={[styles.doorPhoto, { borderColor: COLLECTIONS_STYLE.border }]}>
+            <Image source={collectionsArt} style={styles.doorPhotoImg} resizeMode="cover" />
+          </View>
         </Pressable>
       </View>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -123,9 +209,9 @@ const styles = StyleSheet.create({
     height: 32,
     paddingHorizontal: 13,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(216,170,60,0.4)",
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
@@ -133,6 +219,7 @@ const styles = StyleSheet.create({
   coin: { width: 12, height: 12, borderRadius: 6 },
   balanceText: { ...typography.countMain, fontSize: 13 },
   headline: { ...typography.pageHeading, fontSize: 30, marginTop: 22, paddingHorizontal: 22 },
+  headlineAccent: { color: "#e8bb4e" },
   body: { ...typography.paragraph, marginTop: 10, paddingHorizontal: 22 },
   searchBar: {
     marginTop: 18,
@@ -149,9 +236,26 @@ const styles = StyleSheet.create({
   },
   searchPlaceholder: { ...typography.body, fontSize: 13.5, color: "rgba(255,255,255,0.45)" },
   doors: { marginTop: 20, paddingHorizontal: 22, gap: 12 },
-  door: { borderRadius: 20, padding: 17, overflow: "hidden" },
+  door: { minHeight: 138, borderRadius: 14, padding: 17, overflow: "hidden" },
+  // Bounded corner thumbnail — fixed width, height derived from the source art's own ratio (see
+  // doorPhotoImg) so the whole picture always shows with no crop, at a size that sits clear of
+  // the row's own text instead of bleeding across it.
+  doorPhoto: {
+    position: "absolute",
+    right: 13,
+    top: 15,
+    width: 128,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    overflow: "hidden",
+  },
+  doorPhotoImg: { width: "100%", aspectRatio: 840 / 475 },
   doorBorder: { ...StyleSheet.absoluteFill, borderRadius: 20, borderWidth: 1.5 },
-  doorEyebrow: { ...typography.eyebrow, fontSize: 9.5, letterSpacing: 3.2, color: "#E0C4FF" },
-  doorTitle: { ...typography.pageHeading, fontSize: 25, marginTop: 7 },
-  doorSummary: { ...typography.sectionSub, marginTop: 5 },
+  // Exact type scale from GrailhausDiscover.js's own `kicker`/`rowTitle`/`stats`/`blurb` styles —
+  // this app models font weight as a family token (`fonts.*`) rather than a numeric `fontWeight`,
+  // so 800/700/500 map to extrabold/bold/medium respectively.
+  doorEyebrow: { fontFamily: fonts.extrabold, fontSize: 10, letterSpacing: 3, color: "#E0C4FF" },
+  doorTitle: { fontFamily: fonts.extrabold, fontSize: 20, color: "#fff", lineHeight: 23, letterSpacing: -0.5, marginTop: 5, maxWidth: "70%" },
+  doorSummary: { fontFamily: fonts.bold, fontSize: 11.5, color: "rgba(255,255,255,0.9)", marginTop: 7 },
+  doorBlurb: { fontFamily: fonts.regular, fontSize: 11.5, lineHeight: 15, color: "rgba(255,255,255,0.66)", marginTop: 5, maxWidth: "54%" },
 });

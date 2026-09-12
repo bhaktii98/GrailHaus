@@ -25,7 +25,7 @@ export function SignInPrompt({ title, body, ctaLabel = "SIGN IN" }: { title: str
 
 const styles = StyleSheet.create({
   wrap: { alignItems: "center", paddingHorizontal: 32, marginTop: 60, gap: 10 },
-  title: { ...typography.title, textAlign: "center" },
+  title: { ...typography.title, textAlign: "center", color: "#fff" },
   body: { ...typography.sectionSub, textAlign: "center" },
   button: { width: "100%", marginTop: 14 },
 });

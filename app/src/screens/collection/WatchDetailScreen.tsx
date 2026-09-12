@@ -10,7 +10,7 @@ import { PositionCard } from "../../components/PositionCard";
 import { ValueDriftChart } from "../../components/ValueDriftChart";
 import { itemArtGradient } from "../../content/cardArt";
 import { colors, ink } from "../../theme/tokens";
-import { useTabBarClearance } from "../../navigation/tabBarVisibility";
+import { useHideTabBarWhileFocused } from "../../navigation/tabBarVisibility";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
 import { itemDetail as copy } from "../../content/copy";
 import type { CollectionStackParamList } from "../../navigation/CollectionStack";
@@ -29,7 +29,7 @@ export function WatchDetailScreen() {
   // hardcoding "watches" would show a handbags item its wrong tier names/colors.
   const rarityTiers = useRarityTiers(item.category);
   const [marketValueOpen, setMarketValueOpen] = useState(false);
-  const tabBarClearance = useTabBarClearance();
+  useHideTabBarWhileFocused();
 
   const heldDays = Math.max(0, Math.floor((Date.now() - new Date(owned.acquiredAt).getTime()) / 86_400_000));
 
@@ -50,7 +50,7 @@ export function WatchDetailScreen() {
   return (
     <View style={styles.fill}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 220 + tabBarClearance }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 220 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash
@@ -68,7 +68,7 @@ export function WatchDetailScreen() {
           </View>
 
           <View style={styles.heroWrap}>
-            <WatchDial art={itemArtGradient(item)} size={150} />
+            <WatchDial art={itemArtGradient(item)} imageUrl={item.textureUrl} size={150} />
           </View>
 
           <View style={styles.heroText}>
@@ -111,7 +111,7 @@ export function WatchDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { bottom: tabBarClearance }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.actionRow}>
           <Pressable style={styles.keepButton} onPress={() => navigation.goBack()}>
             <Text style={styles.keepLabel}>{copy.keep}</Text>

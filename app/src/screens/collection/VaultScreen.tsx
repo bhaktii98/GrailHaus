@@ -68,7 +68,7 @@ export function VaultScreen() {
           const basis = owned.costBasisCents;
           return (
             <Pressable style={styles.row} onPress={() => navigation.navigate("WatchDetail", { owned })}>
-              <WatchDial art={itemArtGradient(owned.item)} size={70} />
+              <WatchDial art={itemArtGradient(owned.item)} imageUrl={owned.item.textureUrl} size={70} />
               <View style={styles.rowInfo}>
                 <Text style={styles.brand}>{(owned.item.brand ?? "INDEPENDENT").toUpperCase()}</Text>
                 <Text style={styles.name}>{owned.item.watchName ?? owned.item.name}</Text>

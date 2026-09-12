@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, type RouteProp, type CompositeNavigationProp } from "@react-navigation/native";
@@ -7,11 +7,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { usePackDetailViewModel } from "../viewmodels/usePackDetailViewModel";
-import { useTabBarClearance } from "../navigation/tabBarVisibility";
 import { useSessionViewModel } from "../viewmodels/useSessionViewModel";
 import { usePackFlowViewModel } from "../viewmodels/usePackFlowViewModel";
 import { useAuthStore } from "../state/authStore";
 import { PackFace } from "../components/PackFace";
+import { PACK_RENDER } from "../content/localArt";
 import { StatBox } from "../components/StatBox";
 import { OddsBarList } from "../components/OddsBarList";
 import { ItemPreviewGrid } from "../components/ItemPreviewGrid";
@@ -47,7 +47,6 @@ export function PackDetailScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [quantity, setQuantity] = useState<1 | 10>(1);
   const isRippingRef = useRef(false);
-  const tabBarClearance = useTabBarClearance();
 
   // Bulk ripping (PRD §46) is offered here — the evergreen shelf's own detail screen — for every
   // card tier. This used to exclude Vault Break, because a batch meant replaying that tier's
@@ -104,9 +103,18 @@ export function PackDetailScreen() {
         <View style={styles.iconButton} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: 140 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.hero}>
-          <PackFace art={art} width={110} height={152} radius={14} crimp />
+          {/* GrailhausPacks.js's own real per-tier render — falls back to the flat-gradient
+              PackFace box for any tier with no render yet. */}
+          {PACK_RENDER[sku.tier] ? (
+            <Image source={PACK_RENDER[sku.tier]} style={styles.heroPhoto} resizeMode="contain" />
+          ) : (
+            <PackFace art={art} width={110} height={152} radius={14} crimp />
+          )}
         </View>
 
         <Text style={styles.name}>{sku.name}</Text>
@@ -126,7 +134,7 @@ export function PackDetailScreen() {
         <ExpectedValueNote sku={sku} linkLabel={copy.fullOdds} accentColor={accents.cards.top} />
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: tabBarClearance }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
         <Pressable onPress={handleOpenSheet} style={styles.ripButtonWrap}>
           <LinearGradient colors={[accents.cards.top, accents.cards.bottom]} style={styles.ripButton}>
             <Text style={styles.ripLabel}>{copy.ripNow}</Text>
@@ -182,11 +190,21 @@ const styles = StyleSheet.create({
 
   scroll: { padding: 20, paddingBottom: 40, gap: spacing.lg },
   hero: { alignItems: "center", marginTop: spacing.sm },
+  heroPhoto: { width: 220, height: 260 },
   name: { fontFamily: fonts.black, fontSize: 30, letterSpacing: -0.3, color: ink.text },
   body: { fontFamily: fonts.regular, fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.6)" },
   statRow: { flexDirection: "row", gap: 10 },
 
-  footer: { padding: 20, paddingTop: 0, gap: 10, alignItems: "center" },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 20,
+    gap: 10,
+    alignItems: "center",
+    backgroundColor: ink.groundDeep,
+  },
   bulkHint: { fontFamily: fonts.semibold, fontSize: 11.5, color: "rgba(255,255,255,0.45)" },
   ripButtonWrap: { borderRadius: 18, alignSelf: "stretch" },
   ripButton: {

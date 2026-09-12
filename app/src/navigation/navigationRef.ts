@@ -1,4 +1,5 @@
 import { createNavigationContainerRef } from "@react-navigation/native";
+import type { Category } from "@grailhaus/shared";
 import type { AppStackParamList } from "./AppNavigator";
 
 /**
@@ -21,4 +22,21 @@ export function navigateToReveal(): void {
   if (!navigationRef.isReady()) return;
   if (navigationRef.getCurrentRoute()?.name === "Reveal") return;
   navigationRef.navigate("Reveal");
+}
+
+/**
+ * Pushes Home's "World" screen (the category-scoped pack shelf) for `category`, from wherever the
+ * tap actually happened — the tab bar's "Reveal" quick-launch button, most notably, which sits
+ * above every tab and has no screen-local navigation prop of its own. "World" is only registered
+ * under HomeStack (see HomeStack.tsx), so this needs the same nested `{screen, params}` shape a
+ * screen-prop `navigation.navigate("Home", { screen: "World", params: { category } })` call would
+ * use — `as never` because `AppStackParamList` only knows about the top-level "Tabs" route, not
+ * what's nested two navigators deep inside it.
+ */
+export function navigateToWorld(category: Category): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate(
+    "Tabs",
+    { screen: "Home", params: { screen: "World", params: { category } } } as never
+  );
 }

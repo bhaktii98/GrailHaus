@@ -11,7 +11,7 @@ import { ValueDriftChart } from "../../components/ValueDriftChart";
 import { itemArtGradient } from "../../content/cardArt";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
-import { useTabBarClearance } from "../../navigation/tabBarVisibility";
+import { useHideTabBarWhileFocused } from "../../navigation/tabBarVisibility";
 import { colors, ink, typography } from "../../theme/tokens";
 import { itemDetail as copy } from "../../content/copy";
 import type { CollectionStackParamList } from "../../navigation/CollectionStack";
@@ -38,7 +38,7 @@ export function CardDetailScreen() {
   // Admin-configurable (rarity_tiers table), not a hardcoded name map — see useRarityTiers.ts.
   const rarityTiers = useRarityTiers("cards");
   const item = owned.item;
-  const tabBarClearance = useTabBarClearance();
+  useHideTabBarWhileFocused();
 
   const copiesOfThisItem = useMemo(
     () =>
@@ -61,7 +61,7 @@ export function CardDetailScreen() {
   return (
     <View style={styles.fill}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 200 + tabBarClearance }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 200 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash
@@ -162,7 +162,7 @@ export function CardDetailScreen() {
         )}
       </ScrollView>
 
-      <View style={[styles.footer, { bottom: tabBarClearance }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.actionRow}>
           <Pressable style={styles.keepButton} onPress={() => navigation.goBack()}>
             <Text style={styles.keepLabel}>{copy.keep}</Text>
