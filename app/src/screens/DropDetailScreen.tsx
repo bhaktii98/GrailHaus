@@ -109,7 +109,10 @@ export function DropDetailScreen() {
       <ScrollView
         // Cleared below the floating back button above (insets.top + 12, 38pt tall) rather than
         // just below the status bar, so the hero eyebrow/title row doesn't sit underneath it.
-        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 60 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + 60, paddingBottom: 140 + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroWrap}>
@@ -234,7 +237,7 @@ export function DropDetailScreen() {
       </ScrollView>
 
       {phase === "live" && (
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
           <Pressable onPress={() => setSheetOpen(true)} style={styles.claimButton}>
             <Text style={styles.claimLabel}>
               {copy.claim} · ${(sku.priceCents / 100).toLocaleString()}
@@ -415,7 +418,16 @@ const styles = StyleSheet.create({
   },
   browseLabel: { fontFamily: fonts.extrabold, fontSize: 14, letterSpacing: 0.7, color: ink.text },
 
-  footer: { padding: 20, paddingTop: 0, gap: spacing.sm },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 20,
+    paddingTop: 0,
+    gap: spacing.sm,
+    backgroundColor: "#0B0716",
+  },
   claimButton: {
     height: 66,
     borderRadius: 18,

@@ -1,6 +1,7 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, type CompositeNavigationProp } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
@@ -16,6 +17,8 @@ import { PackFace } from "../components/PackFace";
 import { CardFace } from "../components/CardFace";
 import { WatchDial } from "../components/WatchDial";
 import { itemArtGradient } from "../content/cardArt";
+import { PACK_RENDER } from "../content/localArt";
+import { Crown } from "../components/Crown";
 import { useHideTabBarOnScroll } from "../navigation/tabBarVisibility";
 import { fonts, ink, typography } from "../theme/tokens";
 import { brand, explore as copy, packTile as packTileCopy } from "../content/copy";
@@ -137,29 +140,82 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-/** Same compact/hero tier row as Shelf's cards column, duplicated locally
- * rather than shared — Explore's row has no "MOST OPENED" featured styling
- * since it's showing every tier across both categories at once, not one
- * category's own pick-your-tier list. */
+function darken(hex: string, amount: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
+  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+/** Same exact GrailhausPacks.js `.pack` box as Shelf's own cards TierRow, duplicated locally
+ * rather than shared — this file's own row shows every tier across both categories at once, not
+ * one category's own pick-your-tier list, but the visual language is identical. */
 function TierRow({ sku, onPress }: { sku: PackSku; onPress: () => void }) {
   const art = ART_GRADIENT[sku.tier] ?? ART_GRADIENT.street_rip;
   const isHero = HERO_TIER.has(sku.tier);
+  const render = PACK_RENDER[sku.tier];
 
   return (
-    <Pressable onPress={onPress} style={[styles.tierRow, isHero && styles.tierRowFeatured]}>
-      <PackFace art={art} width={64} height={88} radius={10} />
-      <View style={styles.tierRowInfo}>
-        <Text style={styles.tierRowEyebrow}>{tierLabel(sku)}</Text>
-        <Text style={styles.tierRowName} numberOfLines={1}>
-          {sku.name}
-        </Text>
-        <Text style={styles.tierRowSub}>{packTileCopy.countLabel(sku.category, sku.itemCount)}</Text>
-        <View style={styles.tierRowPriceRow}>
-          <Text style={styles.tierRowPrice}>${(sku.priceCents / 100).toLocaleString()}</Text>
-          {sku.stockRemaining != null && <Text style={styles.tierRowStock}>{sku.stockRemaining} left</Text>}
-        </View>
+    <View style={[styles.pack, isHero && styles.packPopular]}>
+      {isHero && (
+        <LinearGradient colors={["#3a1263", "#22093f"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.badge}>
+          <Crown />
+          <Text style={styles.badgeText}>{packTileCopy.mostPopular}</Text>
+        </LinearGradient>
+      )}
+
+      {/* GrailhausPacks.js's own real per-tier render — falls back to PackFace's flat-gradient
+          box for any tier with no render yet. */}
+      <View style={styles.packImgWrap}>
+        {render ? (
+          <Image source={render} style={styles.packImg} resizeMode="contain" />
+        ) : (
+          <PackFace art={art} width={112} height={152} radius={10} />
+        )}
       </View>
-    </Pressable>
+
+      <Pressable onPress={onPress} style={styles.packBody}>
+        <View style={styles.packTop}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.kicker}>{tierLabel(sku)}</Text>
+            <Text style={styles.packName} numberOfLines={1}>
+              {sku.name}
+            </Text>
+          </View>
+          <View style={styles.circleBtn}>
+            <Ionicons name="chevron-forward" size={12} color="#fff" />
+          </View>
+        </View>
+
+        <View style={styles.packRow}>
+          <View>
+            <Text style={styles.count}>{packTileCopy.countLabel(sku.category, sku.itemCount).toUpperCase()}</Text>
+            <Text style={styles.price}>${(sku.priceCents / 100).toLocaleString()}</Text>
+            {sku.stockRemaining != null && <Text style={styles.left}>{sku.stockRemaining} left</Text>}
+          </View>
+
+          {/* Real rarity tiers this SKU draws from — admin-configured name + color. */}
+          <View style={styles.tierGroup}>
+            {sku.rarityTiers.map((t) => (
+              <View key={t.level} style={styles.tierCol}>
+                <LinearGradient
+                  colors={[t.colorHex, darken(t.colorHex, 0.55)]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.chip, { borderColor: `${t.colorHex}b0` }]}
+                >
+                  <Crown w={13} h={8} fill="#fff" />
+                </LinearGradient>
+                <Text style={styles.tierColLabel} numberOfLines={1}>
+                  {t.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
@@ -279,25 +335,65 @@ const styles = StyleSheet.create({
 
   section: { gap: 12 },
   sectionTitle: { fontFamily: fonts.extrabold, fontSize: 15, letterSpacing: -0.2, color: ink.text },
-  sectionBody: { gap: 12 },
+  sectionBody: { gap: 16 },
 
-  tierRow: {
-    flexDirection: "row",
-    gap: 14,
-    padding: 14,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.14)",
+  // Exact values from GrailhausPacks.js's own `.pack`/`.packImgWrap`/`.badge`/etc — same box
+  // Shelf's own cards TierRow uses.
+  pack: {
+    minHeight: 160,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(255,255,255,0.035)",
   },
-  tierRowFeatured: { borderColor: "rgba(177,75,255,0.5)" },
-  tierRowInfo: { flex: 1, minWidth: 0, justifyContent: "center" },
-  tierRowEyebrow: typography.tierPill,
-  tierRowName: { ...typography.packNameHero, fontSize: 18, marginTop: 5 },
-  tierRowSub: { ...typography.packSub, marginTop: 3 },
-  tierRowPriceRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 7 },
-  tierRowPrice: { fontFamily: fonts.black, fontSize: 18, color: ink.text },
-  tierRowStock: { ...typography.footNote },
+  packPopular: {
+    borderColor: "#a855f7",
+    backgroundColor: "rgba(40,16,66,0.9)",
+    shadowColor: "#a855f7",
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  packImgWrap: { position: "absolute", left: -4, top: -10, bottom: -10, width: 150, borderRadius: 10, overflow: "hidden" },
+  packImg: { width: "100%", height: "100%" },
+  packBody: { flex: 1, paddingLeft: 158, paddingRight: 10, paddingTop: 14, paddingBottom: 16 },
+  badge: {
+    position: "absolute",
+    right: -8,
+    top: -15,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#b26bf5",
+    zIndex: 2,
+  },
+  badgeText: { color: "#fff", fontSize: 11, fontWeight: "800", letterSpacing: 1.1 },
+  packTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
+  kicker: { fontSize: 10, fontWeight: "700", letterSpacing: 2.6, color: "rgba(255,255,255,0.55)" },
+  packName: { fontSize: 22, fontWeight: "800", color: "#fff", marginTop: 4, letterSpacing: -0.4 },
+  circleBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  packRow: { flexDirection: "row", alignItems: "flex-end", gap: 7, marginTop: 6 },
+  count: { fontSize: 10, fontWeight: "700", letterSpacing: 2, color: "rgba(255,255,255,0.5)" },
+  price: { fontSize: 23, fontWeight: "800", color: "#fff", marginTop: 4, letterSpacing: -0.5 },
+  left: { fontSize: 12.5, color: "rgba(255,255,255,0.6)", marginTop: 5 },
+  tierGroup: { flexDirection: "row", gap: 2, paddingBottom: 2, marginLeft: "auto" },
+  tierCol: { alignItems: "center", gap: 5, width: 30 },
+  chip: { width: 18, height: 25, borderRadius: 5, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  tierColLabel: { fontSize: 7, fontWeight: "800", letterSpacing: 0.4, color: "rgba(255,255,255,0.72)" },
 
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   cell: {

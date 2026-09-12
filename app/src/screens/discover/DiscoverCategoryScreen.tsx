@@ -193,7 +193,7 @@ export function DiscoverCategoryScreen() {
                 {isCards ? (
                   <CardFace gradient={itemArtGradient(primary.detail)} imageUrl={primary.detail.textureUrl} width={44} height={61} />
                 ) : (
-                  <WatchDial art={itemArtGradient(primary.detail)} size={54} />
+                  <WatchDial art={itemArtGradient(primary.detail)} imageUrl={primary.detail.textureUrl} size={54} />
                 )}
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName}>{group.label}</Text>
@@ -225,7 +225,7 @@ export function DiscoverCategoryScreen() {
               {isCards ? (
                 <CardFace gradient={itemArtGradient(group.art.detail)} imageUrl={group.art.detail.textureUrl} width={44} height={61} />
               ) : (
-                <WatchDial art={itemArtGradient(group.art.detail)} size={54} />
+                <WatchDial art={itemArtGradient(group.art.detail)} imageUrl={group.art.detail.textureUrl} size={54} />
               )}
               <View style={styles.rowInfo}>
                 <Text style={styles.rowName}>{group.label}</Text>
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
-  headerTitle: { ...typography.title, fontSize: 16 },
+  headerTitle: { ...typography.title, fontSize: 16, color: "#fff" },
   searchBox: {
     flex: 1,
     height: 44,
@@ -338,6 +338,6 @@ const styles = StyleSheet.create({
   },
   ownedText: { ...typography.footNote, fontSize: 9, fontWeight: "800" as const, color: "#8BF285" },
   rowValue: { alignItems: "flex-end" },
-  priceText: { ...typography.title, fontSize: 15 },
+  priceText: { ...typography.title, fontSize: 15, color: "#fff" },
   empty: { ...typography.sectionSub, textAlign: "center", marginTop: 60 },
 });

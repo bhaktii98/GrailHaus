@@ -723,7 +723,7 @@ function HoldingCell({
             />
           ) : (
             <View style={styles.watchArt}>
-              <WatchDial art={itemArtGradient(item)} size={Math.min(width - 44, artHeight - 52)} />
+              <WatchDial art={itemArtGradient(item)} imageUrl={item.textureUrl} size={Math.min(width - 44, artHeight - 52)} />
             </View>
           )}
           {isListed && (
@@ -864,7 +864,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: spacing.sm,
   },
-  emptyTitle: { ...typography.title, textAlign: "center" },
+  emptyTitle: { ...typography.title, textAlign: "center", color: "#fff" },
   empty: { ...typography.sectionSub, textAlign: "center" },
   emptyButton: { width: "100%", marginTop: 14 },
   // The grid's own "this filter matches nothing" line — sits inside the list, below the header

@@ -15,6 +15,8 @@ import { useAuthStore } from "../state/authStore";
 import { PackTile, ART_GRADIENT, tierLabel, HERO_TIER } from "../components/PackTile";
 import { PackFace } from "../components/PackFace";
 import { CategorySwitch } from "../components/CategorySwitch";
+import { Crown } from "../components/Crown";
+import { PACK_RENDER } from "../content/localArt";
 import { useHideTabBarOnScroll, useTabBarClearance } from "../navigation/tabBarVisibility";
 import { fonts, ink, typography } from "../theme/tokens";
 import { brand, shelf as shelfCopy, packTile as packTileCopy } from "../content/copy";
@@ -144,11 +146,11 @@ export function ShelfScreen() {
 
         {category === "cards" && shelf.packs.length > 0 && (
           <>
-            <View style={styles.trustNote}>
-              <View style={styles.trustCheck}>
-                <Ionicons name="checkmark" size={14} color="#8BF285" />
-              </View>
-              <Text style={styles.trustNoteText}>{shelfCopy.explorePacks.trustNote}</Text>
+            {/* Exact styling of GrailhausPacks.js's own `.odds` banner. */}
+            <View style={styles.odds}>
+              <Ionicons name="shield-checkmark-outline" size={20} color="#d9ab52" />
+              <Text style={styles.oddsText}>{shelfCopy.explorePacks.trustNote}</Text>
+              <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.5)" />
             </View>
             <Pressable onPress={() => navigation.navigate("Portfolio")}>
               <Text style={styles.collectionLink}>{shelfCopy.explorePacks.collectionLink}</Text>
@@ -162,36 +164,89 @@ export function ShelfScreen() {
 
 /** One row in "Pick your tier" — the middle (hero) tier gets a highlighted
  * border/shadow and a floating "MOST OPENED" tag, per the mockup. */
+/** GrailhausPacks.js's own crown-chip tier swatch — one per real `sku.rarityTiers` entry
+ * (admin-configured name + color), not the reference's hardcoded CORE/PRIME/GRAIL array. A
+ * two-stop gradient synthesized from the tier's single stored color the same way
+ * CategorySwitch's own `darken()` already does, so a chip reads as a lit surface rather than a
+ * flat color swatch — matching the reference's own two-stop `bg` per tier. */
+function darken(hex: string, amount: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
+  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
 function TierRow({ sku, onPress }: { sku: PackSku; onPress: () => void }) {
   const isFeatured = HERO_TIER.has(sku.tier);
+  const render = PACK_RENDER[sku.tier];
   const art = ART_GRADIENT[sku.tier] ?? ART_GRADIENT.street_rip;
 
   return (
-    <Pressable onPress={onPress} style={[styles.tierRow, isFeatured && styles.tierRowFeatured]}>
+    <View style={[styles.pack, isFeatured && styles.packPopular]}>
       {isFeatured && (
-        <View style={styles.mostOpenedTag}>
-          <Text style={styles.mostOpenedText}>{shelfCopy.explorePacks.mostOpened}</Text>
-        </View>
+        <LinearGradient colors={["#3a1263", "#22093f"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.badge}>
+          <Crown />
+          <Text style={styles.badgeText}>{shelfCopy.explorePacks.mostOpened}</Text>
+        </LinearGradient>
       )}
-      <View style={styles.tierRowArt}>
-        <PackFace art={art} width={76} height={104} radius={10} />
+
+      {/* GrailhausPacks.js's own real pack render, bled off the row's left/top/bottom edges at
+          full size (`contain`, not cropped) — falls back to PackFace's flat-gradient box for any
+          tier with no render yet (a category added later, e.g. handbags). */}
+      <View style={styles.packImgWrap}>
+        {render ? (
+          <Image source={render} style={styles.packImg} resizeMode="contain" />
+        ) : (
+          <PackFace art={art} width={112} height={152} radius={10} />
+        )}
       </View>
-      <View style={styles.tierRowInfo}>
-        <Text style={styles.tierRowEyebrow}>{tierLabel(sku)}</Text>
-        <Text style={styles.tierRowName} numberOfLines={1}>
-          {sku.name}
-        </Text>
-        <Text style={styles.tierRowSub}>{packTileCopy.countLabel(sku.category, sku.itemCount)}</Text>
-        <View style={styles.tierRowPriceRow}>
-          <Text style={styles.tierRowPrice}>${(sku.priceCents / 100).toLocaleString()}</Text>
-          {sku.stockRemaining != null && (
-            <Text style={styles.tierRowStock}>
-              {sku.stockRemaining} {shelfCopy.explorePacks.leftSuffix}
+
+      <Pressable onPress={onPress} style={styles.packBody}>
+        <View style={styles.packTop}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.kicker}>{tierLabel(sku)}</Text>
+            <Text style={styles.packName} numberOfLines={1}>
+              {sku.name}
             </Text>
-          )}
+          </View>
+          <View style={styles.circleBtn}>
+            <Ionicons name="chevron-forward" size={12} color="#fff" />
+          </View>
         </View>
-      </View>
-    </Pressable>
+
+        <View style={styles.packRow}>
+          <View>
+            <Text style={styles.count}>{packTileCopy.countLabel(sku.category, sku.itemCount).toUpperCase()}</Text>
+            <Text style={styles.price}>${(sku.priceCents / 100).toLocaleString()}</Text>
+            {sku.stockRemaining != null && (
+              <Text style={styles.left}>
+                {sku.stockRemaining} {shelfCopy.explorePacks.leftSuffix}
+              </Text>
+            )}
+          </View>
+
+          {/* Real rarity tiers this SKU actually draws from — admin-configured name + color. */}
+          <View style={styles.tierGroup}>
+            {sku.rarityTiers.map((t) => (
+              <View key={t.level} style={styles.tierCol}>
+                <LinearGradient
+                  colors={[t.colorHex, darken(t.colorHex, 0.55)]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.chip, { borderColor: `${t.colorHex}b0` }]}
+                >
+                  <Crown w={13} h={8} fill="#fff" />
+                </LinearGradient>
+                <Text style={styles.tierColLabel} numberOfLines={1}>
+                  {t.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
@@ -236,7 +291,7 @@ const styles = StyleSheet.create({
   headingTitle: { fontFamily: fonts.black, fontSize: 30, letterSpacing: -0.9, lineHeight: 32, color: ink.text, marginTop: 4 },
   headingSub: { ...typography.sectionSub, marginTop: 4 },
   scroll: { flex: 1 },
-  list: { padding: 20, paddingTop: 16, gap: 12, paddingBottom: 40 },
+  list: { padding: 20, paddingTop: 16, gap: 16, paddingBottom: 40 },
   empty: { ...typography.sectionSub, textAlign: "center", marginTop: 32 },
   error: {
     ...typography.errorText,
@@ -244,64 +299,79 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  tierRow: {
-    flexDirection: "row",
-    gap: 14,
-    padding: 14,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.14)",
-  },
-  tierRowFeatured: {
-    borderColor: "rgba(177,75,255,0.5)",
-    shadowColor: "#B14BFF",
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 28,
-    elevation: 6,
-    marginTop: 10,
-  },
-  mostOpenedTag: {
-    position: "absolute",
-    top: -10,
-    right: 16,
-    paddingHorizontal: 10,
-    height: 19,
-    borderRadius: 999,
-    backgroundColor: "rgba(177,75,255,0.9)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mostOpenedText: { fontFamily: fonts.extrabold, fontSize: 9, letterSpacing: 0.6, color: "#fff" },
-  tierRowArt: { flexShrink: 0 },
-  tierRowInfo: { flex: 1, minWidth: 0, justifyContent: "center" },
-  tierRowEyebrow: typography.tierPill,
-  tierRowName: { ...typography.packNameHero, fontSize: 20, marginTop: 6 },
-  tierRowSub: { ...typography.packSub, marginTop: 4 },
-  tierRowPriceRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 8 },
-  tierRowPrice: { fontFamily: fonts.black, fontSize: 20, color: ink.text },
-  tierRowStock: { ...typography.footNote },
-
-  trustNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
+  // Exact values from GrailhausPacks.js's own `.pack`/`.packImgWrap`/`.badge`/etc — real sku data
+  // fills every field, but the box itself is the reference's, not a reinterpretation of it.
+  pack: {
+    minHeight: 160,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(255,255,255,0.035)",
+  },
+  packPopular: {
+    borderColor: "#a855f7",
+    backgroundColor: "rgba(40,16,66,0.9)",
+    shadowColor: "#a855f7",
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  packImgWrap: { position: "absolute", left: -4, top: -10, bottom: -10, width: 150, borderRadius: 10, overflow: "hidden" },
+  packImg: { width: "100%", height: "100%" },
+  packBody: { flex: 1, paddingLeft: 158, paddingRight: 10, paddingTop: 14, paddingBottom: 16 },
+  badge: {
+    position: "absolute",
+    right: -8,
+    top: -15,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#b26bf5",
+    zIndex: 2,
+  },
+  badgeText: { color: "#fff", fontSize: 11, fontWeight: "800", letterSpacing: 1.1 },
+
+  packTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
+  kicker: { fontSize: 10, fontWeight: "700", letterSpacing: 2.6, color: "rgba(255,255,255,0.55)" },
+  packName: { fontSize: 22, fontWeight: "800", color: "#fff", marginTop: 4, letterSpacing: -0.4 },
+  circleBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
-  },
-  trustCheck: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "rgba(99,232,92,0.16)",
     alignItems: "center",
     justifyContent: "center",
   },
-  trustNoteText: { ...typography.packSub, flex: 1 },
+
+  packRow: { flexDirection: "row", alignItems: "flex-end", gap: 7, marginTop: 6 },
+  count: { fontSize: 10, fontWeight: "700", letterSpacing: 2, color: "rgba(255,255,255,0.5)" },
+  price: { fontSize: 23, fontWeight: "800", color: "#fff", marginTop: 4, letterSpacing: -0.5 },
+  left: { fontSize: 12.5, color: "rgba(255,255,255,0.6)", marginTop: 5 },
+
+  tierGroup: { flexDirection: "row", gap: 2, paddingBottom: 2, marginLeft: "auto" },
+  tierCol: { alignItems: "center", gap: 5, width: 30 },
+  chip: { width: 18, height: 25, borderRadius: 5, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  tierColLabel: { fontSize: 7, fontWeight: "800", letterSpacing: 0.4, color: "rgba(255,255,255,0.72)" },
+
+  odds: {
+    minHeight: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(216,170,60,0.28)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingHorizontal: 14,
+  },
+  oddsText: { flex: 1, fontSize: 12.5, color: "rgba(255,255,255,0.82)" },
   collectionLink: {
     ...typography.linkMuted,
     color: "#C99BFF",

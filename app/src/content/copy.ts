@@ -99,6 +99,7 @@ export const packTile = {
     category === "cards" ? `${itemCount} card${itemCount === 1 ? "" : "s"}` : `${itemCount} item${itemCount === 1 ? "" : "s"}`,
   buyOne: "BUY 1",
   buyTen: "×10",
+  mostPopular: "MOST POPULAR",
 } as const;
 
 export const explore = {
@@ -447,16 +448,32 @@ export const sellItem = {
 export const discover = {
   title: "Discover",
   headline: "Find the thing\nyou already want.",
+  // Split so the screen can color just the last clause gold (GrailhausDiscover.js's own
+  // `headAccent`), same words as `headline` above — kept as two fields instead of parsing
+  // `headline` apart at render time.
+  headlineLead: "Find the thing\nyou ",
+  headlineAccent: "already want.",
   body: "Search the catalogue, then choose how to get it — chase it in a pack, or buy the exact one from someone who has it.",
   searchPlaceholder: "Search cards, watches, sets, brands",
   // Per-category doors are built from each category's own admin-configured label now (see
   // DiscoverScreen.tsx), not a hardcoded cards/watches pair — this eyebrow/title pair is
   // synthesized inline instead of living here.
-  collectionsDoor: { eyebrow: "COLLECTIONS", title: "Browse Collections" },
+  collectionsDoor: { eyebrow: "COLLECTIONS", title: "Browse Collections", blurb: "Curated drops. Iconic brands. All in one place." },
   doorSummary: (items: number, tiers: number, listed: number) =>
     `${items} items · ${tiers} tier${tiers === 1 ? "" : "s"} · ${listed} listed now`,
   collectionsDoorSummary: (collections: number, items: number) =>
     `${collections} collection${collections === 1 ? "" : "s"} · ${items} items · across every category`,
+  // One line of flavor copy per door — static, not derived from any real field (there's no
+  // "tagline" column on a category the way there is on an item). Same honesty rule as
+  // `home.featuredDrop.tagline`: a fixed string per known category id, not a fabricated one.
+  // Falls back to a generic line for any category this list doesn't name yet (e.g. one added via
+  // the admin dashboard tomorrow), so a new category never shows blank/undefined here.
+  doorBlurb: {
+    cards: "Iconic cards. Real value. Endless possibilities.",
+    watches: "Legendary timepieces. Timeless value.",
+    handbags: "Iconic pieces. Endless style.",
+  } as Record<string, string>,
+  doorBlurbFallback: "Real pulls. Real value.",
 } as const;
 
 export const discoverCategory = {

@@ -4,23 +4,16 @@ import type { Category } from "@grailhaus/shared";
 import { typography } from "../theme/tokens";
 import { useCategoriesViewModel } from "../viewmodels/useCategoriesViewModel";
 
-/** Darkens a `#rrggbb` hex color toward black by `amount` (0-1) — used to synthesize a two-stop
- * gradient from a category's single admin-configured accent color, since the backend-driven
- * `categories` table stores one accent, not a pre-baked gradient pair. */
-function darken(hex: string, amount: number): string {
-  const n = parseInt(hex.replace("#", ""), 16);
-  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
-  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
-  const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
-}
-
 /**
  * The Shelf's category segmented switch — tapping a side jumps the whole screen's register
- * (accent, tier vocabulary, art) to that category. Segments come from the backend-driven
- * `categories` table (useCategoriesViewModel), not a hardcoded two-entry array — a category
- * added via the admin dashboard shows up here with no app change, which is the concrete "does
- * adding handbags actually reach the app" proof point for this screen specifically.
+ * (tier vocabulary, art) to that category. Segments come from the backend-driven `categories`
+ * table (useCategoriesViewModel), not a hardcoded two-entry array — a category added via the
+ * admin dashboard shows up here with no app change, which is the concrete "does adding handbags
+ * actually reach the app" proof point for this screen specifically.
+ *
+ * The active pill's own gold gradient is fixed — GrailhausPacks.js's own `tabOn` treatment,
+ * the same regardless of which tab is selected — rather than swapping to that category's own
+ * accent, which read as the highlight itself changing identity every time you switched tabs.
  */
 export function CategorySwitch({ value, onChange }: { value: Category; onChange: (category: Category) => void }) {
   const { categories, isLoading } = useCategoriesViewModel();
@@ -37,12 +30,14 @@ export function CategorySwitch({ value, onChange }: { value: Category; onChange:
     <View style={styles.track}>
       {categories.map((category) => {
         const isActive = category.id === value;
-        const top = category.paletteAccent;
-        const bottom = darken(category.paletteAccent, 0.45);
         return (
           <Pressable key={category.id} style={styles.segment} onPress={() => onChange(category.id)}>
             {isActive ? (
-              <LinearGradient colors={[top, bottom]} style={styles.activePill}>
+              <LinearGradient
+                colors={["#fbe08f", "#e0aa2e", "#b9821a"]}
+                locations={[0, 0.52, 1]}
+                style={styles.activePill}
+              >
                 <Text style={styles.activeLabel}>{category.label.toUpperCase()}</Text>
               </LinearGradient>
             ) : (
@@ -80,6 +75,6 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 4,
   },
-  activeLabel: { ...typography.switchLabel, color: "#FFFFFF" },
-  inactiveLabel: { ...typography.switchLabel, color: "rgba(255,255,255,0.5)" },
+  activeLabel: { ...typography.switchLabel, color: "#1b1205", textAlign: "center" },
+  inactiveLabel: { ...typography.switchLabel, color: "rgba(255,255,255,0.5)", textAlign: "center" },
 });

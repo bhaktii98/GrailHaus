@@ -56,7 +56,7 @@ export function VersionsScreen() {
         {isCards ? (
           <CardFace gradient={itemArtGradient(group.versions[0].detail)} imageUrl={group.versions[0].detail.textureUrl} width={48} height={67} />
         ) : (
-          <WatchDial art={itemArtGradient(group.versions[0].detail)} size={58} />
+          <WatchDial art={itemArtGradient(group.versions[0].detail)} imageUrl={group.versions[0].detail.textureUrl} size={58} />
         )}
         <View style={styles.titleInfo}>
           <Text style={styles.name}>{group.label}</Text>
@@ -77,7 +77,7 @@ export function VersionsScreen() {
             {isCards ? (
               <CardFace gradient={itemArtGradient(v.detail)} imageUrl={v.detail.textureUrl} width={56} height={78} />
             ) : (
-              <WatchDial art={itemArtGradient(v.detail)} size={56} />
+              <WatchDial art={itemArtGradient(v.detail)} imageUrl={v.detail.textureUrl} size={56} />
             )}
             <View style={styles.rowInfo}>
               <View style={styles.rowBadges}>
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   itemName: { ...typography.packName, fontSize: 15, marginTop: 5 },
   itemMeta: { ...typography.footNote, marginTop: 3 },
   rowValue: { alignItems: "flex-end" },
-  priceText: { ...typography.title, fontSize: 15 },
+  priceText: { ...typography.title, fontSize: 15, color: "#fff" },
   footer: { padding: 20, alignItems: "center" },
   footerHint: { ...typography.footNote },
 });

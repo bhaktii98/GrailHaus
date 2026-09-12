@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, type ReactNode } from "react";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useSharedValue, useAnimatedScrollHandler, withTiming, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
 
 /** The pill's own height — shared with PillTabBar.tsx so the two can never drift apart. */
 export const TAB_BAR_HEIGHT = 62;
@@ -32,9 +32,27 @@ const SCROLL_DELTA_THRESHOLD = 6;
  * The pill nav floats over screen content (`position: "absolute"` in
  * PillTabBar) rather than reserving its own row, so any screen with content
  * that can reach the bottom of the viewport needs this much extra bottom
- * padding/margin to keep that content from sitting underneath the pill. */
+ * padding/margin to keep that content from sitting underneath the pill.
+ *
+ * The hidden/shown flag this clearance is sized around is one value shared
+ * across the whole tab tree (see `TabBarVisibilityProvider` above) — if a
+ * previous screen scrolled down and hid the bar, and this screen never wires
+ * `useHideTabBarOnScroll` itself (most detail screens don't scroll enough to
+ * need it), that hidden state otherwise persists here with nothing to clear
+ * it, leaving this exact amount of reserved space empty with no bar in it —
+ * scrolled content ends up visible underneath whatever's anchored to this
+ * clearance instead. Forcing the bar back to shown on every focus means any
+ * screen calling this always gets the space it asked for actually filled;
+ * a screen that separately wants scroll-driven hiding still gets it the
+ * moment the user actually scrolls, since that handler runs after this. */
 export function useTabBarClearance(extraGap = 24) {
   const insets = useSafeAreaInsets();
+  const hidden = useTabBarHidden();
+  useFocusEffect(
+    useCallback(() => {
+      hidden.value = withTiming(0, { duration: 200 });
+    }, [hidden])
+  );
   return TAB_BAR_HEIGHT + Math.max(insets.bottom, 16) + extraGap;
 }
 

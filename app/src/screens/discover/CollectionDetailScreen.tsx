@@ -71,7 +71,7 @@ function Cell({ item, onPress }: { item: DiscoverItem; onPress: () => void }) {
       {isCards ? (
         <CardFace gradient={itemArtGradient(detail)} imageUrl={detail.textureUrl} width={64} height={89} />
       ) : (
-        <WatchDial art={itemArtGradient(detail)} size={64} />
+        <WatchDial art={itemArtGradient(detail)} imageUrl={detail.textureUrl} size={64} />
       )}
       {/* Flat fallback chain instead of a category check — exactly one of pokemonName/watchName
           is ever set per real item, and both fall through to the generic catalog name for a

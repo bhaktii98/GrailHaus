@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
@@ -18,6 +18,7 @@ import { ExpectedValueNote } from "../components/ExpectedValueNote";
 import { ConfirmPurchaseSheet } from "../components/ConfirmPurchaseSheet";
 import { itemArtGradient } from "../content/cardArt";
 import { ART_GRADIENT, tierLabel } from "../components/PackTile";
+import { PACK_RENDER } from "../content/localArt";
 import { accents, ink } from "../theme/tokens";
 import { vaultDetail as copy } from "../content/copy";
 import type { AppStackParamList } from "../navigation/AppNavigator";
@@ -98,7 +99,13 @@ export function VaultDetailScreen() {
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: actionBarPadding + 100 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <WatchDial art={art} size={140} />
+          {/* GrailhausPacks.js's own real per-tier box render — falls back to the dial for any
+              tier with no render yet. */}
+          {PACK_RENDER[sku.tier] ? (
+            <Image source={PACK_RENDER[sku.tier]} style={styles.heroPhoto} resizeMode="contain" />
+          ) : (
+            <WatchDial art={art} size={140} />
+          )}
         </View>
 
         <Text style={styles.name}>{sku.name}</Text>
@@ -196,6 +203,7 @@ const styles = StyleSheet.create({
 
   scroll: { padding: 24, paddingTop: 18, gap: 22 },
   hero: { alignItems: "center", marginTop: 8 },
+  heroPhoto: { width: 220, height: 260 },
   name: {
     fontFamily: "Outfit_400Regular",
     fontSize: 30,

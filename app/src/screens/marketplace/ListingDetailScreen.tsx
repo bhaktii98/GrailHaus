@@ -58,7 +58,7 @@ export function ListingDetailScreen() {
   return (
     <View style={styles.fill}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 150 + actionBarPadding }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 160 + actionBarPadding }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash

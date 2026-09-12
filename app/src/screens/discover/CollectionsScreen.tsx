@@ -67,7 +67,7 @@ export function CollectionsScreen() {
                 {isCards ? (
                   <CardFace gradient={itemArtGradient(primary.detail)} imageUrl={primary.detail.textureUrl} width={44} height={61} />
                 ) : (
-                  <WatchDial art={itemArtGradient(primary.detail)} size={52} />
+                  <WatchDial art={itemArtGradient(primary.detail)} imageUrl={primary.detail.textureUrl} size={52} />
                 )}
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName} numberOfLines={1}>
@@ -129,6 +129,6 @@ const styles = StyleSheet.create({
   rowName: { ...typography.packName, fontSize: 15 },
   rowSub: { ...typography.footNote, marginTop: 3 },
   rowValue: { alignItems: "flex-end" },
-  priceText: { ...typography.title, fontSize: 14 },
+  priceText: { ...typography.title, fontSize: 14, color: "#fff" },
   empty: { ...typography.sectionSub, textAlign: "center", marginTop: 60 },
 });

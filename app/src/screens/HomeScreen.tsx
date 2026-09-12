@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Image as PhotoImage } from "expo-image";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +23,7 @@ import { WatchDial } from "../components/WatchDial";
 import { Countdown } from "../components/Countdown";
 import { ART_GRADIENT, tierLabel } from "../components/PackTile";
 import { itemArtGradient } from "../content/cardArt";
+import { heroArt, cardsArt, watchesArt } from "../content/localArt";
 import type { DropView } from "../viewmodels/useDropsViewModel";
 import { accents, colors, ink, spacing, typography } from "../theme/tokens";
 import { brand, shelf as shelfCopy, home as copy, packTile as packTileCopy } from "../content/copy";
@@ -222,68 +224,90 @@ export function HomeScreen() {
 
 function FeaturedDropCard({ drop, onPress }: { drop: DropView; onPress: () => void }) {
   const { sku } = drop;
-  const art = ART_GRADIENT[sku.tier] ?? ART_GRADIENT.obsidian_vault;
   const remaining = sku.stockRemaining;
   const max = sku.maxStock;
   const pips = max != null && max > 0 && max <= 20 ? max : null;
   const filledPips = pips != null && remaining != null ? Math.round((remaining / max!) * pips) : 0;
 
   return (
-    <View>
+    <View style={styles.featured}>
+      {/* A tilted, floating real photo — GrailhausHome.js's own `heroCardWrap`, not a full-bleed
+          background — so the photo keeps its own framing regardless of this card's
+          content-driven height. */}
+      <View style={styles.featuredPhotoCard}>
+        <PhotoImage source={heroArt} style={StyleSheet.absoluteFill} contentFit="contain" />
+      </View>
+      {/* Opaque up to 40% (the text zone, well left of the photo), fully clear by 50% so the
+          whole photo shows with no tint over it — same technique as the reference's own scrim. */}
+      <LinearGradient
+        colors={["rgba(20,4,10,0.95)", "rgba(20,4,10,0.95)", "transparent"]}
+        locations={[0, 0.4, 0.5]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.featuredGlow} pointerEvents="none" />
+
+      {/* The live badge sits inside the bordered showcase box, over the photo/scrim — same
+          placement as the reference's own `heroContent` — instead of floating above it. */}
       <View style={styles.featuredEyebrowRow}>
         <View style={styles.liveDot} />
         <Text style={styles.featuredEyebrow}>{copy.featuredDrop.eyebrow}</Text>
       </View>
 
-      <View style={styles.featured}>
-        <LinearGradient
-          colors={["rgba(255,92,122,0.24)", "rgba(90,12,32,0.2)", "rgba(10,6,20,0.6)"]}
-          locations={[0, 0.52, 1]}
-          start={{ x: 0.05, y: 0 }}
-          end={{ x: 0.95, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.featuredGlow} pointerEvents="none" />
-        <View style={styles.featuredArt} pointerEvents="none">
-          <View style={[styles.featuredArtCard, { transform: [{ rotate: "6deg" }] }]}>
-            <PackFace art={art} width={74} height={104} radius={11} />
-          </View>
-          <View style={[styles.featuredArtCard, styles.featuredArtCardBack, { transform: [{ rotate: "-8deg" }] }]}>
-            <PackFace art={art} width={74} height={104} radius={11} />
-          </View>
+      <Text style={styles.featuredKicker}>
+        {sku.category.toUpperCase()} · {tierLabel(sku)}
+      </Text>
+      <Text style={styles.featuredName}>{sku.name}</Text>
+      <Text style={styles.featuredSub}>{packTileCopy.countLabel(sku.category, sku.itemCount)}</Text>
+
+      {/* Icon + fact triplets, same shape as the reference's `metaRow` — real count/price/stock,
+          never the reference's own flavor copy. */}
+      <View style={styles.metaRow}>
+        <View style={styles.metaItem}>
+          <Ionicons name="layers-outline" size={13} color="rgba(255,255,255,0.85)" />
+          <Text style={styles.metaText}>{packTileCopy.countLabel(sku.category, sku.itemCount)}</Text>
         </View>
-
-        <Text style={styles.featuredKicker}>
-          {sku.category.toUpperCase()} · {tierLabel(sku)}
-        </Text>
-        <Text style={styles.featuredName}>{sku.name}</Text>
-        <Text style={styles.featuredSub}>
-          {packTileCopy.countLabel(sku.category, sku.itemCount)} · ${(sku.priceCents / 100).toLocaleString()}
-        </Text>
-
+        <View style={styles.metaDivider} />
+        <View style={styles.metaItem}>
+          <Ionicons name="pricetag-outline" size={13} color="rgba(255,255,255,0.85)" />
+          <Text style={styles.metaText}>${(sku.priceCents / 100).toLocaleString()}</Text>
+        </View>
         {remaining != null && max != null && (
-          <View style={styles.featuredStockRow}>
-            <View style={styles.leftPill}>
-              <Text style={styles.leftPillLabel}>LEFT</Text>
-              <Text style={styles.leftPillValue}>{copy.featuredDrop.left(remaining, max)}</Text>
+          <>
+            <View style={styles.metaDivider} />
+            <View style={styles.metaItem}>
+              <Ionicons name="cube-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.metaText}>
+                {remaining} <Text style={styles.metaSmall}>REMAINING</Text>
+              </Text>
             </View>
-            <Text style={styles.watchingText}>{copy.featuredDrop.watching}</Text>
-          </View>
+          </>
         )}
+      </View>
 
-        {pips != null && (
-          <View style={styles.pipRow}>
-            {Array.from({ length: pips }).map((_, i) => (
-              <View key={i} style={[styles.pip, i < filledPips ? styles.pipFilled : styles.pipEmpty]} />
-            ))}
-          </View>
-        )}
+      {pips != null && (
+        <View style={styles.pipRow}>
+          {Array.from({ length: pips }).map((_, i) => (
+            <View key={i} style={[styles.pip, i < filledPips ? styles.pipFilled : styles.pipEmpty]} />
+          ))}
+        </View>
+      )}
 
-        <Pressable onPress={onPress}>
+      {/* CTA beside a real countdown — GrailhausHome.js's own footer pairing — shown only when
+          this drop actually has a real end time (`sku.endsAt`), never a fabricated clock. */}
+      <View style={styles.heroFooter}>
+        <Pressable onPress={onPress} style={styles.featuredCtaWrap}>
           <LinearGradient colors={["#FF7A9C", "#C4183C"]} style={styles.featuredCta}>
             <Text style={styles.featuredCtaLabel}>{copy.featuredDrop.cta}</Text>
           </LinearGradient>
         </Pressable>
+        {sku.endsAt && (
+          <View style={styles.endsInWrap}>
+            <Text style={styles.endsInLabel}>ENDS IN</Text>
+            <Countdown target={sku.endsAt} color="#fff" />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -300,26 +324,47 @@ function DoorCard({
   summary: { tierCount: number; fromPriceCents: number | null };
   onPress: () => void;
 }) {
-  // Every category from the categories table gets a door now — cards keeps its own pack-tear
-  // art, everything else (watches, and any category added after, e.g. handbags) shares the
-  // watch-dial icon treatment as a generic fallback, same as its accent color already does.
-  // There's no per-category 3D icon asset pipeline for this small decorative glyph — the door's
-  // label/price/tier-count are always real, only this icon is a shared placeholder.
+  // Every category from the categories table gets a door now — cards and watches each get their
+  // own real photo blended into the tile via a horizontal scrim (GrailhausHome.js's own
+  // `CollectionCard`); any category added after (e.g. handbags) has no photo of its own yet and
+  // falls back to the watch-dial icon treatment, same as its accent color already does.
   const accent = accents[category as keyof typeof accents] ?? accents.cards;
   const art = category === "cards" ? ART_GRADIENT.vault_break : ART_GRADIENT.obsidian_vault;
+  const photo = category === "cards" ? cardsArt : category === "watches" ? watchesArt : null;
+  // Each source photo frames its subject differently (the watch sits well right-of-center,
+  // higher up, in watches-art.jpg) — a plain center crop misses it entirely on a narrow, tall
+  // panel like this one, so each gets its own bias toward where the actual subject sits.
+  const photoPosition = category === "watches" ? { left: "82%", top: "28%" } : { left: "50%" };
 
   return (
     <Pressable onPress={onPress} style={[styles.door, { borderColor: `${accent.top}70` }]}>
-      <LinearGradient colors={[`${accent.top}33`, `${accent.bottom}1a`]} style={StyleSheet.absoluteFill} />
-      <View style={styles.doorArt} pointerEvents="none">
-        {category === "cards" ? (
-          <View style={{ opacity: 0.7, transform: [{ rotate: "-12deg" }] }}>
-            <PackFace art={art} width={54} height={75} radius={9} />
-          </View>
-        ) : (
+      {photo ? (
+        <>
+          {/* Full-height panel (GrailhausHome.js's own `CollectionCard`) — a small bounded corner
+              tile was tried here and never rendered any pixels at all, at any size, with either
+              the plain RN `Image` or `expo-image`, even though the tile's own border/shape
+              rendered fine. This size is a known-working baseline (it showed real pixels, just
+              cropped tighter than ideal) rather than a smaller one that silently failed
+              outright. */}
+          <PhotoImage source={photo} style={styles.doorPhoto} contentFit="cover" contentPosition={photoPosition} />
+          {/* Opaque up to 42% (well left of the 48%-wide photo panel on the right), fully clear
+              by 52% — same scrim technique as the reference's own `CollectionCard`. */}
+          <LinearGradient
+            colors={[`${accent.bottom}f7`, `${accent.bottom}f7`, "transparent"]}
+            locations={[0, 0.42, 0.52]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      ) : (
+        <LinearGradient colors={[`${accent.top}33`, `${accent.bottom}1a`]} style={StyleSheet.absoluteFill} />
+      )}
+      {!photo && (
+        <View style={styles.doorArt} pointerEvents="none">
           <WatchDial art={art} size={58} />
-        )}
-      </View>
+        </View>
+      )}
       <Text style={[styles.doorEyebrow, { color: accent.top }]}>{copy.door.eyebrow}</Text>
       <Text style={styles.doorName}>{label}</Text>
       <Text style={styles.doorSub}>
@@ -708,10 +753,11 @@ const styles = StyleSheet.create({
   scrollInner: { position: "relative", gap: spacing.xl },
   ambientWash: { position: "absolute", top: 0, left: 0, right: 0, height: 900 },
 
-  featuredEyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.md },
+  featuredEyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.danger },
   featuredEyebrow: { ...typography.eyebrow, color: "#FF8DA1" },
   featured: {
+    minHeight: 300,
     borderRadius: 24,
     borderWidth: 2,
     borderColor: "rgba(255,92,122,0.45)",
@@ -727,35 +773,43 @@ const styles = StyleSheet.create({
     borderRadius: 95,
     backgroundColor: "rgba(255,201,74,0.16)",
   },
-  featuredArt: { position: "absolute", right: 14, top: 26, flexDirection: "row" },
-  featuredArtCard: { shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 8 } },
-  featuredArtCardBack: { marginLeft: -30 },
-  featuredKicker: { ...typography.eyebrow, color: "rgba(255,255,255,0.7)", maxWidth: 190 },
-  featuredName: { ...typography.pageHeading, fontSize: 30, lineHeight: 32, marginTop: spacing.sm, maxWidth: 200 },
-  featuredSub: { ...typography.packSub, marginTop: spacing.sm, maxWidth: 200 },
-  featuredStockRow: { flexDirection: "row", alignItems: "center", gap: 11, marginTop: spacing.lg },
-  leftPill: {
-    height: 30,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  // Exact size/position as GrailhausHome.js's own `heroCardWrap`.
+  featuredPhotoCard: {
+    position: "absolute",
+    left: "42%",
+    top: 8,
+    width: "60%",
+    height: 210,
+    borderRadius: 12,
+    overflow: "hidden",
+    transform: [{ rotate: "6deg" }],
+    shadowColor: "#000",
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
   },
-  leftPillLabel: { ...typography.footNote, letterSpacing: 1.4 },
-  leftPillValue: { ...typography.countMain, color: "#F2C46B" },
-  watchingText: { ...typography.packSub, color: "rgba(255,255,255,0.6)" },
+  featuredKicker: { ...typography.eyebrow, color: "rgba(255,255,255,0.7)", maxWidth: 150, marginTop: spacing.md },
+  featuredName: { ...typography.pageHeading, fontSize: 28, lineHeight: 30, marginTop: spacing.sm, maxWidth: 155 },
+  featuredSub: { ...typography.packSub, marginTop: spacing.sm, maxWidth: 155 },
+  // Icon + fact triplets — GrailhausHome.js's own `metaRow`/`metaItem`/`metaDivider`. Sits below
+  // the photo's own bottom edge (see featuredPhotoCard's top+height) so it's free to span the
+  // full card width without competing with the photo for room.
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: spacing.lg, flexWrap: "wrap" },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  metaText: { ...typography.packSub, color: "rgba(255,255,255,0.85)", fontWeight: "600" },
+  metaSmall: { fontSize: 9.5, letterSpacing: 1 },
+  metaDivider: { width: 1, height: 13, backgroundColor: "rgba(255,255,255,0.2)" },
   pipRow: { flexDirection: "row", gap: 4, marginTop: spacing.md },
   pip: { flex: 1, height: 6, borderRadius: 4 },
   pipFilled: { backgroundColor: "#F2C46B" },
   pipEmpty: { backgroundColor: "rgba(255,255,255,0.14)" },
+  // CTA + a real "ends in" countdown side by side — GrailhausHome.js's own `heroFooter`.
+  heroFooter: { flexDirection: "row", alignItems: "flex-end", gap: 12, marginTop: spacing.lg },
+  featuredCtaWrap: { flex: 1 },
   featuredCta: {
     height: 56,
     borderRadius: 16,
-    marginTop: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -767,11 +821,13 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   featuredCtaLabel: { ...typography.chunkyButtonLabel, letterSpacing: 0.8 },
+  endsInWrap: { alignItems: "center", paddingBottom: 6 },
+  endsInLabel: { ...typography.footNote, letterSpacing: 1.6 },
 
   doors: { flexDirection: "row", gap: spacing.md },
   door: {
     width: 168,
-    minHeight: 118,
+    height: 135,
     borderRadius: 20,
     borderWidth: 2,
     padding: 15,
@@ -779,6 +835,8 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   doorArt: { position: "absolute", right: -10, bottom: -6, opacity: 0.85 },
+  // Exact size/position as GrailhausHome.js's own `collImg`.
+  doorPhoto: { position: "absolute", right: -6, top: 0, bottom: 0, width: "48%" },
   doorEyebrow: { ...typography.eyebrow, letterSpacing: 2 },
   doorName: { ...typography.packNameHero, fontSize: 22, marginTop: 6 },
   doorSub: { ...typography.packSub, marginTop: 5 },
