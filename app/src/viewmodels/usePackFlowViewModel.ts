@@ -6,6 +6,7 @@ import { groupBulkRun, nextStage, presentationStrategyFor, withPackCoordinates }
 import { usePackFlowStore } from "../state/packFlowStore";
 import { useCategoriesViewModel } from "./useCategoriesViewModel";
 import { toCategoryRevealConfig } from "../engine/core/categoryRevealConfig";
+import { applyChoreography } from "../engine/core/choreographyRegistry";
 import { purchaseService } from "../services/purchaseService";
 import { clearPendingPurchase, getPendingPurchase, reconcilePendingPurchase, setPendingPurchase } from "../lib/pendingPurchase";
 import {
@@ -247,7 +248,19 @@ export function usePackFlowViewModel() {
     config: sku
       ? (() => {
           const row = categoriesById.get(sku.category);
-          return row ? toCategoryRevealConfig(row) : null;
+          if (!row) return null;
+          const base = toCategoryRevealConfig(row);
+          // The one seam where a *tier* refines a *category's* reveal. The categories table is
+          // keyed by category, so every watch pack — Reserve, Archive, Obsidian Vault — resolves
+          // to the same row; a tier with its own timeline reveal earns it on top of that row
+          // rather than getting a separate screen or a duplicated config. Decorating here (instead
+          // of branching in RevealScreen, the way the card tiers do) means the admin-configured
+          // palette, camera and lighting for watches still flow through, and RevealEngine stays
+          // unaware that tiers exist at all.
+          //
+          // Deliberately one call into a registry rather than a chain of per-tier `if`s: adding a
+          // reveal is a row in engine/core/choreographyRegistry.ts, never an edit here.
+          return applyChoreography(base, sku);
         })()
       : null,
     isActive: sku != null && (items != null || isBatchSummary),

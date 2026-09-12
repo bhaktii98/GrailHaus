@@ -12,6 +12,10 @@ declare module "fastify" {
     /** Same identity check as `authenticate`, plus a `profiles.is_admin` lookup — for the
      * admin-only mutation routes (pack/slot edits, etc.), not used by anything user-facing. */
     requireAdmin: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    /** Identifies the caller when a valid bearer token happens to be present, and does nothing
+     * at all when one isn't — for routes that stay public but behave differently for a signed-in
+     * caller (e.g. `/listings` hiding your own listings from Browse). Never sends a 401. */
+    identifyOptional: (req: FastifyRequest) => Promise<void>;
   }
 }
 
@@ -45,6 +49,19 @@ export const authPlugin = fp(async function authPlugin(app: FastifyInstance) {
 
   app.decorate("authenticate", async (req: FastifyRequest, reply: FastifyReply) => {
     await verifyAndSetUserId(req, reply);
+  });
+
+  app.decorate("identifyOptional", async (req: FastifyRequest) => {
+    const header = req.headers.authorization;
+    const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+    if (!token) return;
+    try {
+      req.userId = await verifyAccessToken(token);
+    } catch (err) {
+      // An expired or malformed token on a public route is not an error — the caller simply
+      // stays anonymous and gets the unauthenticated view, exactly as if they'd sent no token.
+      if (!(err instanceof InvalidTokenError)) throw err;
+    }
   });
 
   app.decorate("requireAdmin", async (req: FastifyRequest, reply: FastifyReply) => {

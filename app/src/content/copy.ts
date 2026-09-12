@@ -535,7 +535,13 @@ export const marketplace = {
   categoryAll: (n: number) => `Both · ${n} live`,
   empty: "No listings yet — be the first to list something.",
   myListingsEmpty: "You don't have anything listed right now.",
+  /** Browse shows other collectors' listings only, so "nothing here" needs to say so — otherwise
+   * a seller whose own items are the only things on the market reads it as the market being
+   * broken rather than as "you've already seen everything that isn't yours." */
+  browseEmptyOwnListingsOnly: "Nothing new to buy right now — your own listings live under My Listings.",
   liveBadge: "LIVE",
+  statusSold: "SOLD",
+  statusDelisted: "DELISTED",
   signInTitle: "Sign in to see your listings",
   signInBody: "Track what you've put up for sale — sign in to see your own book.",
   filters: "FILTERS",
@@ -556,6 +562,8 @@ export const listingDetail = {
   buying: "BUYING…",
   editPrice: "EDIT PRICE",
   cancelListing: "CANCEL LISTING",
+  soldNote: "Sold — proceeds credited to your balance",
+  delistedNote: "Delisted — this item is back in your collection",
 } as const;
 
 export const editPriceSheet = {
@@ -576,6 +584,7 @@ export const buyListing = {
   balanceAfter: "Balance after",
   feeNote: "The platform fee comes out of the seller's proceeds, not your total. You pay the ask and nothing more.",
   continue: "CONFIRM & PAY",
+  insufficientFunds: "NOT ENOUGH BALANCE",
   working: "PROCESSING…",
   successTitle: "It's yours.",
   successSub: "PURCHASE COMPLETE",

@@ -45,6 +45,17 @@ export function PackTearMesh({ openProgress }: { openProgress: SharedValue<numbe
     pack.setProgress(openProgress.value);
     pack.setTime(state.clock.elapsedTime);
     pack.react(dt, 0, false);
+
+    // Shadows are enabled on this tier's Canvas, which by default re-renders the shadow map
+    // every frame — a second full pass over the pack's (deforming, high-vertex-count) geometry
+    // on top of the main render. The shadow only actually changes when the pack's geometry
+    // moves, so drive the map manually from exactly that condition. `autoUpdate` is switched off
+    // once here rather than on the Canvas so the rest of the scene graph keeps its normal
+    // behaviour; the visible shadow is identical, it just stops being recomputed for frames
+    // where nothing it depends on moved.
+    const shadowMap = state.gl.shadowMap;
+    if (shadowMap.autoUpdate) shadowMap.autoUpdate = false;
+    if (pack.shadowDirty()) shadowMap.needsUpdate = true;
   });
 
   return (

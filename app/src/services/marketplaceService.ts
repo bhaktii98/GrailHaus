@@ -8,8 +8,14 @@ export interface FeePreview {
 }
 
 export const marketplaceService = {
+  /** Other collectors' active listings only — the server leaves the caller's own out (it reads
+   * the bearer token when one is sent), since you can't buy from yourself. */
   browse: (category?: Category): Promise<Listing[]> =>
     apiGet<Listing[]>(category ? `/listings?category=${category}&limit=100` : "/listings?limit=100"),
+  /** The signed-in seller's own book, keyed server-side on the authenticated seller id — active
+   * listings first, then sold/delisted ones. Requires a session. */
+  mine: (category?: Category): Promise<Listing[]> =>
+    apiGet<Listing[]>(category ? `/listings/mine?category=${category}&limit=100` : "/listings/mine?limit=100"),
   get: (id: string): Promise<Listing> => apiGet<Listing>(`/listings/${id}`),
   create: (ownedItemId: string, priceCents: number): Promise<Listing> =>
     apiPost<Listing>("/listings", { ownedItemId, priceCents }),

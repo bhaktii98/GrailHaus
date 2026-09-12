@@ -7,6 +7,7 @@ import {
   createListing,
   delist,
   getListing,
+  myListings,
   previewFeeSplit,
   updatePrice,
 } from "./marketplace.service.js";
@@ -41,9 +42,13 @@ export async function marketplaceRoutes(app: FastifyInstance) {
   app.get(
     "/listings",
     {
+      // Still public (no 401 without a token), but a token that *is* sent identifies the caller
+      // so their own listings can be left out — you can't buy from yourself, so surfacing them
+      // in Browse is a dead end. Sellers see their own book under /listings/mine.
+      preHandler: app.identifyOptional,
       schema: {
         tags: ["marketplace"],
-        summary: "Browse active listings — public, same access model as /packs",
+        summary: "Browse active listings — public; excludes the caller's own when signed in",
         querystring: {
           type: "object",
           properties: {
@@ -57,7 +62,32 @@ export async function marketplaceRoutes(app: FastifyInstance) {
     },
     async (req) => {
       const { category, limit, offset } = req.query as { category?: Category; limit?: number; offset?: number };
-      return browseListings(category, limit, offset);
+      return browseListings(category, limit, offset, req.userId);
+    }
+  );
+
+  app.get(
+    "/listings/mine",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags: ["marketplace"],
+        summary: "The signed-in seller's own listings — active first, then sold/delisted",
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: "object",
+          properties: {
+            category: { type: "string" },
+            limit: { type: "number", minimum: 1, maximum: 200, default: 50 },
+            offset: { type: "number", minimum: 0, default: 0 },
+          },
+        },
+        response: { 200: { type: "array", items: listingSchema } },
+      },
+    },
+    async (req) => {
+      const { category, limit, offset } = req.query as { category?: Category; limit?: number; offset?: number };
+      return myListings(req.userId!, category, limit, offset);
     }
   );
 

@@ -11,7 +11,7 @@ import { ValueDriftChart } from "../../components/ValueDriftChart";
 import { itemArtGradient } from "../../content/cardArt";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
-import { useHideTabBarWhileFocused } from "../../navigation/tabBarVisibility";
+import { useActionBarPadding, useHideTabBarOnScreen } from "../../navigation/tabBarVisibility";
 import { colors, ink, typography } from "../../theme/tokens";
 import { itemDetail as copy } from "../../content/copy";
 import type { CollectionStackParamList } from "../../navigation/CollectionStack";
@@ -38,7 +38,10 @@ export function CardDetailScreen() {
   // Admin-configurable (rarity_tiers table), not a hardcoded name map — see useRarityTiers.ts.
   const rarityTiers = useRarityTiers("cards");
   const item = owned.item;
-  useHideTabBarWhileFocused();
+  // A leaf screen with its own Keep/Sell action bar — the pill nav would sit directly under
+  // those buttons and push them a nav-bar's height off the bottom edge.
+  useHideTabBarOnScreen();
+  const actionBarPadding = useActionBarPadding();
 
   const copiesOfThisItem = useMemo(
     () =>
@@ -61,7 +64,9 @@ export function CardDetailScreen() {
   return (
     <View style={styles.fill}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 200 + insets.bottom }]}
+        // Clears the absolutely-positioned action bar below (two rows + its own padding) so the
+        // last section can still be scrolled clear of it.
+        contentContainerStyle={[styles.scroll, { paddingBottom: 190 + actionBarPadding }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash
@@ -162,7 +167,7 @@ export function CardDetailScreen() {
         )}
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
         <View style={styles.actionRow}>
           <Pressable style={styles.keepButton} onPress={() => navigation.goBack()}>
             <Text style={styles.keepLabel}>{copy.keep}</Text>
@@ -282,9 +287,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 14,
     gap: 10,
-    backgroundColor: colors.bg,
+    // Matches the screen's own ground (it used to be `colors.bg`, a different near-black, which
+    // drew a visible seam across the bottom of the page) with a hairline to separate the action
+    // bar from content scrolling underneath it.
+    backgroundColor: ink.groundDeep,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
   },
   actionRow: { flexDirection: "row", gap: 10 },
   keepButton: {

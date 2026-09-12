@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { SkImage } from '@shopify/react-native-skia';
 import { noise } from './noise';
 import { drawFront, drawBack, drawCardBack, drawShine } from '../art/packArt';
+import { fastComputeVertexNormals, gridLayout, makeScratch, type DeformScratch } from './fastGeometry';
 import { makeDataTexture } from './textures';
 import type { CategoryPersonality } from '../config/types';
 
@@ -20,6 +21,10 @@ export interface BuiltPack {
   setProgress: (p: number) => void;
   setTime: (time: number, energy?: number) => void;
   react: (dt: number, pullX: number, pulling: boolean) => void;
+  /** True on frames where something the shadow map depends on actually moved — the tear deform
+   * re-ran, or the released strip is still falling. The scene uses this to re-render the shadow
+   * map only when it would actually change (see PackTearMesh), instead of every frame. */
+  shadowDirty: () => boolean;
   /** Frees every geometry, material and texture this pack allocated.
    * Call when the reveal is dismissed — required before building the next
    * pack in a batch, or memory climbs pack over pack. */
@@ -32,6 +37,8 @@ interface SheetData {
   rest: Float32Array;
   center: [number, number];
   sign?: number;
+  /** Per-column/per-row term caches for the deform passes — see engine/fastGeometry.ts. */
+  scratch: DeformScratch;
 }
 
 export function buildPackObject(personality: CategoryPersonality, logo: SkImage | null): BuiltPack {
@@ -114,7 +121,38 @@ export function buildPackObject(personality: CategoryPersonality, logo: SkImage 
       uv.setXY(i, mirror ? 1 - u : u, v);
     }
     g.computeVertexNormals();
-    return { geometry: g, pos, rest: Float32Array.from(pos.array), center: [cx, cy] };
+    // The pack is always the subject of this shot and never leaves the frustum, so culling buys
+    // nothing — but leaving it on would force a bounding-sphere rebuild (a whole extra pass over
+    // the vertices) after every deform. A fixed, generous sphere keeps the mesh permanently
+    // "visible" to the culler and takes that pass off the per-frame path.
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), Math.max(W, H) * 2);
+
+    const rest = Float32Array.from(pos.array as Float32Array);
+    const scratch = makeScratch(gridLayout(nx, ny));
+    const { cols, rows } = scratch.layout;
+    // Bake the rest-pose-only terms: each column's `u`, and each row's set (which differs by the
+    // sheet's role — see the matching comment in vaultReveal/engine/buildVaultPackObject.ts).
+    for (let c = 0; c < cols; c++) {
+      scratch.u[c] = (rest[c * 3] + cx + W / 2) / W;
+    }
+    for (let r = 0; r < rows; r++) {
+      const rowI3 = r * cols * 3;
+      if (edge === 'bottom') {
+        const dy = rest[rowI3 + 1] + cy - seamY;
+        const along = Math.min(1, Math.max(0, dy / (H / 2 - seamY)));
+        scratch.rowA[r] = dy;
+        scratch.rowB[r] = along;
+        scratch.rowC[r] = Math.sin(along * Math.PI);
+      } else {
+        const Y = rest[rowI3 + 1] + cy;
+        const d = (seamY - Y) / (H * 0.3);
+        const oneMinusD = Math.max(0, 1 - d);
+        scratch.rowA[r] = Math.pow(oneMinusD, 2.2);
+        scratch.rowB[r] = oneMinusD;
+      }
+    }
+
+    return { geometry: g, pos, rest, center: [cx, cy], scratch };
   };
 
   const group = new THREE.Group();
@@ -136,6 +174,18 @@ export function buildPackObject(personality: CategoryPersonality, logo: SkImage 
     },
   );
   group.add(body);
+
+  // `lip` and the buckle noise are pure functions of a column's `u` and the sheet's `sign`, so
+  // they are evaluated once here rather than once per vertex per frame — taking a five-octave
+  // noise off the per-frame path for 2 x 97 columns.
+  bodySheets.forEach(({ sign, scratch }) => {
+    const { cols } = scratch.layout;
+    for (let c = 0; c < cols; c++) {
+      const u = scratch.u[c];
+      scratch.colA[c] = Math.sin(Math.PI * Math.min(1, Math.max(0, u)));
+      scratch.colB[c] = noise(u * 14 + sign);
+    }
+  });
 
   // ---- cards ------------------------------------------------------------
   const cards = new THREE.Group();
@@ -189,67 +239,89 @@ export function buildPackObject(personality: CategoryPersonality, logo: SkImage 
   // Peel + crinkle: each column hinges at the crimp as the rip passes it,
   // and the sheet gathers into folds — foil buckles, it does not bend
   // smoothly.
+  // Restructured into two passes — per-column terms once, then a grid sweep — rather than
+  // recomputing every column's `u`-derived terms (including a five-octave noise) once per row.
+  // Identical math and identical output; see engine/fastGeometry.ts for the full rationale.
   const deformLidSheet = (sheetData: SheetData, q: number) => {
-    const { pos, rest, center, geometry } = sheetData;
+    const { pos, rest, center, geometry, scratch } = sheetData;
+    const { cols, rows } = scratch.layout;
+    const arr = pos.array as Float32Array;
     const lead = q * (1 + PEEL);
-    for (let i = 0; i < pos.count; i++) {
-      const x = rest[i * 3], y = rest[i * 3 + 1], z = rest[i * 3 + 2];
-      const X = x + center[0];
-      const u = (X + W / 2) / W;
+    const cy0 = center[1] - seamY;
+
+    const cU = scratch.u, cE = scratch.colA, cAhead = scratch.colB, cK = scratch.colC,
+      cFold = scratch.colD, cNoise = scratch.colE;
+    for (let c = 0; c < cols; c++) {
+      const u = cU[c];
       const t = Math.min(1, Math.max(0, (lead - u) / PEEL));
-      const e = t * t * t * (t * (t * 6 - 15) + 10);
-      const ahead = Math.max(0, 1 - Math.abs((lead - u) / (PEEL * 0.35)));
-      const dy = y + center[1] - seamY;
-      const along = Math.min(1, Math.max(0, dy / lidSpanY));
+      cE[c] = t * t * t * (t * (t * 6 - 15) + 10);
+      cAhead[c] = Math.max(0, 1 - Math.abs((lead - u) / (PEEL * 0.35)));
+      cK[c] = 1 - (Math.min(1, Math.max(0, (t - 0.72) / 0.28)) ** 1.6);
+      cFold[c] = Math.sin(u * Math.PI * 13 + q * 5);
+      cNoise[c] = noise(u * 8 + q);
+    }
 
-      const fold = Math.sin(u * Math.PI * 13 + q * 5) * Math.sin(along * Math.PI);
-      const crinkle = fold * 0.0031 * e + noise(u * 8 + q) * 0.0012 * e;
+    for (let r = 0; r < rows; r++) {
+      const dy = scratch.rowA[r], along = scratch.rowB[r], sinAlong = scratch.rowC[r];
+      const base = r * cols;
+      for (let c = 0; c < cols; c++) {
+        const i3 = (base + c) * 3;
+        const x = rest[i3], z = rest[i3 + 2];
+        const u = cU[c], e = cE[c], ahead = cAhead[c];
 
-      const gone = Math.min(1, Math.max(0, (t - 0.72) / 0.28)) ** 1.6;
-      const a = e * 2.35 * (0.5 + 0.5 * along) + crinkle * 26 + ahead * 0.22 * along;
-      const ny = dy * Math.cos(a) - z * Math.sin(a);
-      const nz = dy * Math.sin(a) + z * Math.cos(a) + crinkle;
+        const crinkle = cFold[c] * sinAlong * 0.0031 * e + cNoise[c] * 0.0012 * e;
+        const a = e * 2.35 * (0.5 + 0.5 * along) + crinkle * 26 + ahead * 0.22 * along;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const ny = dy * ca - z * sa;
+        const nz = dy * sa + z * ca + crinkle;
+        const k = cK[c];
 
-      const k = 1 - gone;
-      pos.setXYZ(
-        i,
-        x - e * 0.006 * (u - 0.5) + crinkle * 0.5,
-        (ny - (center[1] - seamY) + e * 0.0022 * along - ahead * 0.0009 * (1 - along)) * k,
-        (nz - e * 0.0015 + ahead * 0.0016 * (1 - along)) * k,
-      );
+        arr[i3] = x - e * 0.006 * (u - 0.5) + crinkle * 0.5;
+        arr[i3 + 1] = (ny - cy0 + e * 0.0022 * along - ahead * 0.0009 * (1 - along)) * k;
+        arr[i3 + 2] = (nz - e * 0.0015 + ahead * 0.0016 * (1 - along)) * k;
+      }
     }
     pos.needsUpdate = true;
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
+    fastComputeVertexNormals(geometry);
   };
   const deformLid = (q: number) => { [lidS, lidSB].forEach((sh) => deformLidSheet(sh, q)); };
 
   // The mouth: once the strip is off, the two walls spring apart into a V
   // and the torn edge loosens and buckles.
+  // Two-pass, same as deformLidSheet. `lip` and the buckle noise depend only on `u`/`sign`, so
+  // they are baked once at build (see bakeBodyColumns below the sheet construction) and only the
+  // rip-tracking tug is recomputed per column per frame.
   const deformBody = (q: number) => {
     const open = Math.min(1, Math.max(0, (q - 0.22) / 0.78));
-    bodySheets.forEach(({ pos, rest, center, sign, geometry }) => {
-      for (let i = 0; i < pos.count; i++) {
-        const x = rest[i * 3], y = rest[i * 3 + 1], z = rest[i * 3 + 2];
-        const X = x + center[0], Y = y + center[1];
-        const u = (X + W / 2) / W;
-        const d = (seamY - Y) / (H * 0.3);
-        const gf = Math.pow(Math.max(0, 1 - d), 2.2) * open;
-        const lip = Math.sin(Math.PI * Math.min(1, Math.max(0, u)));
-        const buckle = noise(u * 14 + sign) * 0.0012 * gf;
-        const ripU = Math.min(1, q / 0.8);
-        const tug = q < 0.02 ? 0
-          : Math.max(0, 1 - Math.abs(u - ripU) / 0.16) * Math.max(0, 1 - d) * 0.0014;
-        pos.setXYZ(
-          i,
-          x * (1 + gf * 0.05 * lip),
-          y - gf * 0.0015 + tug * 0.6,
-          z + sign * (gf * T * 2.4 * lip + Math.abs(buckle) + tug),
-        );
+    const ripU = Math.min(1, q / 0.8);
+    const tugOn = q >= 0.02;
+    bodySheets.forEach(({ pos, rest, sign, geometry, scratch }) => {
+      const { cols, rows } = scratch.layout;
+      const arr = pos.array as Float32Array;
+      const cU = scratch.u, cLip = scratch.colA, cNoise = scratch.colB, cTugU = scratch.colC;
+
+      for (let c = 0; c < cols; c++) {
+        cTugU[c] = tugOn ? Math.max(0, 1 - Math.abs(cU[c] - ripU) / 0.16) * 0.0014 : 0;
+      }
+
+      for (let r = 0; r < rows; r++) {
+        const gfRow = scratch.rowA[r] * open;
+        const oneMinusD = scratch.rowB[r];
+        const base = r * cols;
+        for (let c = 0; c < cols; c++) {
+          const i3 = (base + c) * 3;
+          const x = rest[i3], y = rest[i3 + 1], z = rest[i3 + 2];
+          const lip = cLip[c];
+          const buckle = cNoise[c] * 0.0012 * gfRow;
+          const tug = cTugU[c] * oneMinusD;
+
+          arr[i3] = x * (1 + gfRow * 0.05 * lip);
+          arr[i3 + 1] = y - gfRow * 0.0015 + tug * 0.6;
+          arr[i3 + 2] = z + sign * (gfRow * T * 2.4 * lip + Math.abs(buckle) + tug);
+        }
       }
       pos.needsUpdate = true;
-      geometry.computeVertexNormals();
-      geometry.computeBoundingSphere();
+      fastComputeVertexNormals(geometry);
     });
   };
 
@@ -340,11 +412,25 @@ export function buildPackObject(personality: CategoryPersonality, logo: SkImage 
   };
 
   let fade = 1;
+  // `setProgress` runs every frame whether or not the tear actually moved (PackTearMesh's
+  // useFrame calls it unconditionally), but deformLid/deformBody walk every vertex of four
+  // sheets and rebuild their normals — real, continuous CPU cost with nothing to show for it
+  // while the pack sits static, which is most of this screen's on-screen time (sealed at 0
+  // before the user starts, fully torn at 1 afterwards). Skipping the deform when `q` hasn't
+  // meaningfully changed leaves every other per-frame system untouched and costs nothing
+  // visually — a deform with the same input produces the same vertices.
+  // (vaultReveal/engine/buildVaultPackObject.ts has had this guard; Tier 1 did not.)
+  let lastQ = -1;
+  let deformedThisFrame = false;
   const setProgress = (p: number) => {
     const q = Math.min(1, Math.max(0, p));
-    const peel = Math.min(1, q / 0.8);
-    deformLid(peel);
-    deformBody(q);
+    if (Math.abs(q - lastQ) > 1e-4) {
+      lastQ = q;
+      deformedThisFrame = true;
+      const peel = Math.min(1, q / 0.8);
+      deformLid(peel);
+      deformBody(q);
+    }
 
     const o = Math.min(1, Math.max(0, (q - 0.86) / 0.14));
     const drop = o * o;
@@ -397,6 +483,16 @@ export function buildPackObject(personality: CategoryPersonality, logo: SkImage 
     glintMat.opacity = fade * Math.min(1.1, idle + energy * 0.6);
   };
 
+  // Consumed once per frame by the scene. The shadow map needs redrawing whenever the pack's
+  // geometry moved (a deform ran) or the torn strip is still airborne — and on nothing else, so
+  // a sealed or fully-torn pack sitting still stops paying for a second full render pass.
+  // Reading it clears the flag, so each frame's answer reflects only that frame's work.
+  const shadowDirty = () => {
+    const dirty = deformedThisFrame || (phys.live && !phys.settled);
+    deformedThisFrame = false;
+    return dirty;
+  };
+
   const dispose = () => {
     disposeGeo.forEach((g) => g.dispose());
     disposeMat.forEach((m) => m.dispose());
@@ -404,5 +500,5 @@ export function buildPackObject(personality: CategoryPersonality, logo: SkImage 
   };
 
   setProgress(0);
-  return { group, size: { W, H, T }, seamY, setProgress, setTime, react, dispose };
+  return { group, size: { W, H, T }, seamY, setProgress, setTime, react, shadowDirty, dispose };
 }

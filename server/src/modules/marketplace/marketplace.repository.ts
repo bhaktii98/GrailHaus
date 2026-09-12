@@ -26,10 +26,17 @@ const LISTING_WITH_PARTIES_SELECT = `
   left join public.profiles buyer on buyer.id = l.buyer_id
 `;
 
+/**
+ * Browse: every *other* collector's active listings. `excludeSellerId` (the caller, when signed
+ * in) is filtered out in SQL rather than client-side — you can't buy your own listing (the buy
+ * transaction rejects it outright), so showing it in Browse only offers a dead end. A seller's
+ * own book lives behind "My Listings", which fetches it deliberately via `findListingsBySeller`.
+ */
 export async function findActiveListings(
   category: string | undefined,
   limit: number,
-  offset: number
+  offset: number,
+  excludeSellerId?: string
 ): Promise<ListingWithPartiesRow[]> {
   const params: unknown[] = [];
   let where = "where l.status = 'active'";
@@ -37,9 +44,42 @@ export async function findActiveListings(
     params.push(category);
     where += ` and p.category = $${params.length}`;
   }
+  if (excludeSellerId) {
+    params.push(excludeSellerId);
+    where += ` and l.seller_id <> $${params.length}`;
+  }
   params.push(limit, offset);
   const { rows } = await pool.query<ListingWithPartiesRow>(
     `${LISTING_WITH_PARTIES_SELECT} ${where} order by l.created_at desc limit $${params.length - 1} offset $${params.length}`,
+    params
+  );
+  return rows;
+}
+
+/**
+ * A seller's own book, keyed on the authenticated `seller_id` — the only trustworthy "is this
+ * mine" signal. Browse used to be filtered client-side by matching `seller.username`, which both
+ * missed listings whose seller has no username set and silently broke if two profiles ever
+ * shared one. Includes resolved (sold/delisted) listings so a seller can see what happened to
+ * what they listed, newest first; `status` on each row is what distinguishes them.
+ */
+export async function findListingsBySeller(
+  sellerId: string,
+  category: string | undefined,
+  limit: number,
+  offset: number
+): Promise<ListingWithPartiesRow[]> {
+  const params: unknown[] = [sellerId];
+  let where = "where l.seller_id = $1";
+  if (category) {
+    params.push(category);
+    where += ` and p.category = $${params.length}`;
+  }
+  params.push(limit, offset);
+  const { rows } = await pool.query<ListingWithPartiesRow>(
+    `${LISTING_WITH_PARTIES_SELECT} ${where}
+     order by case when l.status = 'active' then 0 else 1 end, l.created_at desc
+     limit $${params.length - 1} offset $${params.length}`,
     params
   );
   return rows;

@@ -9,6 +9,7 @@ import {
   debitBuyer,
   delistListing,
   findActiveListings,
+  findListingsBySeller,
   findListingWithPartiesById,
   findOwnedItemOwner,
   getFeePercentForCategoryTier,
@@ -82,8 +83,36 @@ async function getListingRowOrThrow(listingId: string): Promise<ListingWithParti
   return row;
 }
 
-export async function browseListings(category: Category | undefined, limit = 50, offset = 0): Promise<Listing[]> {
-  const rows = await findActiveListings(category, Math.min(Math.max(1, limit), 200), Math.max(0, offset));
+/** `viewerId` — the caller, when they happen to be signed in; their own listings are left out
+ * so Browse only ever shows things the viewer can actually buy. Anonymous callers see all. */
+export async function browseListings(
+  category: Category | undefined,
+  limit = 50,
+  offset = 0,
+  viewerId?: string
+): Promise<Listing[]> {
+  const rows = await findActiveListings(
+    category,
+    Math.min(Math.max(1, limit), 200),
+    Math.max(0, offset),
+    viewerId
+  );
+  return rows.map(toListing);
+}
+
+/** The signed-in seller's own book — active first, then resolved. See `findListingsBySeller`. */
+export async function myListings(
+  sellerId: string,
+  category: Category | undefined,
+  limit = 50,
+  offset = 0
+): Promise<Listing[]> {
+  const rows = await findListingsBySeller(
+    sellerId,
+    category,
+    Math.min(Math.max(1, limit), 200),
+    Math.max(0, offset)
+  );
   return rows.map(toListing);
 }
 

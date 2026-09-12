@@ -10,6 +10,7 @@ import { usePackDetailViewModel } from "../viewmodels/usePackDetailViewModel";
 import { useSessionViewModel } from "../viewmodels/useSessionViewModel";
 import { usePackFlowViewModel } from "../viewmodels/usePackFlowViewModel";
 import { useAuthStore } from "../state/authStore";
+import { useActionBarPadding } from "../navigation/tabBarVisibility";
 import { WatchDial } from "../components/WatchDial";
 import { OddsBarList } from "../components/OddsBarList";
 import { ItemPreviewGrid } from "../components/ItemPreviewGrid";
@@ -46,6 +47,7 @@ export function VaultDetailScreen() {
   const requireAuth = useAuthStore((s) => s.requireAuth);
   const [sheetOpen, setSheetOpen] = useState(false);
   const isRippingRef = useRef(false);
+  const actionBarPadding = useActionBarPadding();
 
   const featured = useMemo<PackItem[]>(() => {
     if (!sku) return [];
@@ -95,7 +97,7 @@ export function VaultDetailScreen() {
         <View style={styles.iconButton} />
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: actionBarPadding + 100 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           {/* GrailhausPacks.js's own real per-tier box render — falls back to the dial for any
               tier with no render yet. */}
@@ -142,7 +144,7 @@ export function VaultDetailScreen() {
         />
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
         <Pressable onPress={() => setSheetOpen(true)} style={styles.unlockButton}>
           <Text style={styles.unlockLabel}>{copy.unlockVault}</Text>
           <View style={styles.unlockPricePill}>

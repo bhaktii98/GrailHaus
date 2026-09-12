@@ -9,7 +9,7 @@ import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { useSessionViewModel } from "../../viewmodels/useSessionViewModel";
 import { useBuyListingViewModel } from "../../viewmodels/useMarketplaceViewModel";
-import { useTabBarClearance } from "../../navigation/tabBarVisibility";
+import { useActionBarPadding, useHideTabBarOnScreen } from "../../navigation/tabBarVisibility";
 import { colors, typography } from "../../theme/tokens";
 import { buyListing as copy } from "../../content/copy";
 import type { MarketplaceStackParamList } from "../../navigation/MarketplaceStack";
@@ -39,10 +39,18 @@ export function BuyListingScreen() {
   const { buy } = useBuyListingViewModel();
   const [step, setStep] = useState<Step>("confirm");
   const [error, setError] = useState<string | null>(null);
-  const tabBarClearance = useTabBarClearance();
+  // A checkout step — tab-switching out of a half-finished purchase isn't a flow worth
+  // supporting, and the pill nav under "Confirm purchase" is exactly the float this pass fixes.
+  useHideTabBarOnScreen();
+  const actionBarPadding = useActionBarPadding();
 
   const balanceNow = session.balanceCents ?? 0;
   const balanceAfter = balanceNow - listing.priceCents;
+  // Checked before the request, not after: the server rejects an unaffordable buy anyway
+  // (failureReason "insufficient_funds"), but letting the user tap through to a spinner and a
+  // failure screen for something the balance row above already shows is a wasted round trip.
+  // `session.balanceCents == null` means the profile hasn't loaded yet — don't block on that.
+  const canAfford = session.balanceCents == null || balanceAfter >= 0;
 
   async function handleConfirm() {
     setStep("processing");
@@ -53,6 +61,13 @@ export function BuyListingScreen() {
       setError(result.error);
       setStep("failed");
     }
+  }
+
+  /** Unwind the Marketplace stack before hopping tabs, so returning to Marketplace later lands
+   * on the browse grid rather than on this now-stale purchase-complete screen. */
+  function handleViewInCollection() {
+    navigation.popToTop();
+    navigation.getParent()?.navigate("Portfolio" as never);
   }
 
   if (step === "processing") {
@@ -86,10 +101,10 @@ export function BuyListingScreen() {
             <Row label={copy.newBalance} value={`$${(balanceAfter / 100).toFixed(2)}`} />
           </View>
         </View>
-        <View style={[styles.footer, { paddingBottom: tabBarClearance }]}>
+        <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
           <Pressable
             style={styles.primaryButton}
-            onPress={() => navigation.getParent()?.navigate("Portfolio" as never)}
+            onPress={handleViewInCollection}
           >
             <LinearGradient colors={["#63E85C", "#12864A"]} style={StyleSheet.absoluteFill} />
             <Text style={styles.primaryLabel}>{copy.viewInCollection}</Text>
@@ -145,10 +160,18 @@ export function BuyListingScreen() {
         {error && <Text style={styles.error}>{error}</Text>}
       </View>
 
-      <View style={styles.footer}>
-        <Pressable style={styles.primaryButton} onPress={handleConfirm}>
+      {/* Was the one footer on this screen with no bottom padding at all — its button sat flush
+          against the bottom edge, under the home indicator on gesture-nav devices. */}
+      <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
+        <Pressable
+          style={[styles.primaryButton, !canAfford && styles.disabled]}
+          onPress={handleConfirm}
+          disabled={!canAfford}
+        >
           <LinearGradient colors={["#FFD75E", "#E08A16"]} style={StyleSheet.absoluteFill} />
-          <Text style={[styles.primaryLabel, { color: "#2A1706" }]}>{copy.continue}</Text>
+          <Text style={[styles.primaryLabel, { color: "#2A1706" }]}>
+            {canAfford ? copy.continue : copy.insufficientFunds}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -215,6 +238,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
   },
+  disabled: { opacity: 0.5 },
   linkButton: { alignItems: "center" },
   linkLabel: { ...typography.body, color: colors.textSecondary },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },

@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, type ReactNode } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { createContext, useCallback, useContext, useEffect, type ReactNode } from "react";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useSharedValue, useAnimatedScrollHandler, withTiming, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -57,26 +57,43 @@ export function useTabBarClearance(extraGap = 24) {
 }
 
 /**
- * For a detail screen nested in a tab's own stack (e.g. WatchDetail/CardDetail under Portfolio)
- * that should read as a full, chrome-free detail view rather than a peer of the tab's own list
- * screen — same treatment PackDetail/DropDetail/VaultDetail/ItemFork already get for free by
- * being root-stack siblings of `Tabs` itself (pushing over them hides the whole tab tree,
- * bar included). Those nested detail screens don't get that for free since they're still inside
- * the tab's own stack, so this hides the bar for as long as the screen stays focused, and
- * restores it the moment focus leaves (back to the list, or a tab switch) rather than leaving it
- * hidden behind whatever's navigated to next. Use `insets.bottom` (not `useTabBarClearance`) for
- * this screen's own bottom clearance once there's no bar left to reserve room for.
+ * Suppresses the floating pill nav for as long as this screen is focused, restoring it on the
+ * way out. For pushed screens that own a bottom action bar ("Sell", "Buy now", "Confirm"): the
+ * pill is a *root-level* destination switcher, so leaving it up on a leaf screen both competes
+ * with that screen's primary action and forces the action to float a nav-bar's height above the
+ * bottom edge — the thing that reads as broken. Such a screen is exited via its own back
+ * affordance, not by tab-hopping mid-task.
+ *
+ * Pairs with `useActionBarPadding()` below, which gives the now-unobstructed footer plain
+ * safe-area padding instead of `useTabBarClearance()`'s tab-sized gap.
+ *
+ * Safe on screens outside the tab navigator (the root stack's PackDetail/VaultDetail/ItemFork):
+ * there's no provider there, so this no-ops rather than throwing.
  */
-export function useHideTabBarWhileFocused() {
-  const hidden = useTabBarHidden();
-  useFocusEffect(
-    useCallback(() => {
-      hidden.value = withTiming(1, { duration: 200 });
-      return () => {
-        hidden.value = withTiming(0, { duration: 200 });
-      };
-    }, [hidden])
-  );
+export function useHideTabBarOnScreen() {
+  const hidden = useContext(TabBarHiddenContext);
+  const isFocused = useIsFocused();
+
+  useEffect(() => {
+    if (!hidden || !isFocused) return;
+    // Instant on the way in — animating it out would race the push transition and show the pill
+    // sliding away after the new screen has already landed.
+    hidden.value = 1;
+    return () => {
+      hidden.value = withTiming(0, { duration: 200 });
+    };
+  }, [hidden, isFocused]);
+}
+
+/**
+ * Bottom padding for an action bar on a screen that has *no* tab bar over it — either because
+ * it called `useHideTabBarOnScreen()` or because it lives on the root stack above the tabs.
+ * Just the home-indicator inset plus a small breathing gap, so the primary action sits where
+ * the thumb expects it: at the bottom of the screen.
+ */
+export function useActionBarPadding(extraGap = 12) {
+  const insets = useSafeAreaInsets();
+  return Math.max(insets.bottom, 12) + extraGap;
 }
 
 /**

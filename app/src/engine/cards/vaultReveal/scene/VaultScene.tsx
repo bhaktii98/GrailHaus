@@ -80,6 +80,11 @@ export interface VaultSceneProps {
 const CENTER_Y = 0;
 const BASE_Z = 0.214;
 
+// The orbit branch of useFrame below looks at this fixed point every frame. Allocating it inside
+// the loop handed the GC a Vector3 per frame for a value that never changes — module-level here
+// so the frame loop allocates nothing. (Same reason PackTearMesh keeps its scratch buffers.)
+const ORBIT_TARGET = new THREE.Vector3(0, CENTER_Y, 0);
+
 export const VaultScene = memo(forwardRef<VaultSceneHandle, VaultSceneProps>(function VaultScene(
   { personality, deck, logo, orbit, onSnapshot, introDolly, buildPack = buildVaultPackObject },
   ref
@@ -214,7 +219,7 @@ export const VaultScene = memo(forwardRef<VaultSceneHandle, VaultSceneProps>(fun
 
     // ---- camera choreography --------------------------------------------
     if (f.orbit) {
-      const target = new THREE.Vector3(0, CENTER_Y, 0);
+      const target = ORBIT_TARGET;
       camera.position.set(
         target.x + f.orbitRadius * Math.sin(f.orbitPhi) * Math.sin(f.orbitTheta),
         target.y + f.orbitRadius * Math.cos(f.orbitPhi),
@@ -281,9 +286,9 @@ export const VaultScene = memo(forwardRef<VaultSceneHandle, VaultSceneProps>(fun
 
     // ---- overlay snapshot (throttled to real changes) --------------------
     if (onSnapshot) {
-      const heroCard = pack.reveal.heroCard;
-      const grail = pack.reveal.cards.find((c) => c.isGrail);
-      const labelCard = heroCard ?? (st.phase === "present" ? grail : null);
+      // The `changed` test comes first and the card lookup second, deliberately: this block runs
+      // every frame but only passes the test occasionally, and `cards.find(...)` was scanning the
+      // whole deck on every frame in between just to build a value that was then thrown away.
       const changed = !lastSnapshot.current
         || lastSnapshot.current.phase !== st.phase
         || lastSnapshot.current.hero !== st.hero
@@ -291,6 +296,9 @@ export const VaultScene = memo(forwardRef<VaultSceneHandle, VaultSceneProps>(fun
         || Math.abs(lastSnapshot.current.dim - dim) > 0.02
         || Math.abs(lastSnapshot.current.shown - f.shown) > 0.01;
       if (changed) {
+        const heroCard = pack.reveal.heroCard;
+        const labelCard = heroCard
+          ?? (st.phase === "present" ? pack.reveal.cards.find((c) => c.isGrail) : null);
         const snap: VaultStateSnapshot = {
           phase: st.phase, hero: st.hero, ready: st.ready, running: st.running, dim, shown: f.shown,
           heroLabel: labelCard ? {

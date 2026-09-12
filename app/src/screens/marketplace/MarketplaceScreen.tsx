@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Category, Listing, RarityTierLevel } from "@grailhaus/shared";
@@ -28,6 +28,7 @@ import { marketplace as copy } from "../../content/copy";
 import type { MarketplaceStackParamList } from "../../navigation/MarketplaceStack";
 
 type Nav = NativeStackNavigationProp<MarketplaceStackParamList, "Marketplace">;
+type Route = RouteProp<MarketplaceStackParamList, "Marketplace">;
 
 const CATEGORY_TABS: { key: Category | null; label: string }[] = [
   { key: null, label: "All" },
@@ -61,10 +62,10 @@ function computePriceBands(listings: Listing[]): PriceBand[] {
 
 /**
  * Browse split from My Listings at the top (mockup 12a) so a seller never has to leave the
- * marketplace to check their own book. "My Listings" is filtered client-side by username —
- * `/listings` is a public, unauthenticated-friendly browse endpoint with no seller filter, and
- * `Listing.seller.id` is deliberately an opaque public id rather than the caller's own profile
- * id, so username is the only real signal available to match "is this mine" here.
+ * marketplace to check their own book. The two are separate server queries (see
+ * useMarketplaceViewModel): Browse is other collectors' active listings — the server excludes
+ * the caller's own, since a listing you can't buy is a dead end in a buy feed — and My Listings
+ * comes from `/listings/mine`, keyed on the authenticated seller id.
  */
 export function MarketplaceScreen() {
   const navigation = useNavigation<Nav>();
@@ -76,7 +77,14 @@ export function MarketplaceScreen() {
   // result." Matches grid's 20px side padding + gridRow's 12px inter-column gap.
   const { width: windowWidth } = useWindowDimensions();
   const cardCellWidth = (windowWidth - 20 * 2 - 12) / 2;
-  const [tab, setTab] = useState<"browse" | "mine">("browse");
+  const routeInitialTab = useRoute<Route>().params?.initialTab;
+  const [tab, setTab] = useState<"browse" | "mine">(routeInitialTab ?? "browse");
+  // The Marketplace tab usually stays mounted, so arriving here from elsewhere (SellItem's
+  // "View in marketplace") only updates the route param — the initial useState above has long
+  // since run. Re-apply it on change so the hop actually lands on the intended tab.
+  useEffect(() => {
+    if (routeInitialTab) setTab(routeInitialTab);
+  }, [routeInitialTab]);
   const [category, setCategory] = useState<Category | null>(null);
   const vm = useMarketplaceViewModel(category ?? undefined);
   const tabBarClearance = useTabBarClearance();
@@ -91,16 +99,8 @@ export function MarketplaceScreen() {
   // since it's just real dollar quartiles, category-agnostic.
   const rarityTiers = useRarityTiers(category ?? "cards");
 
-  const scopedListings = useMemo(() => {
-    if (tab === "browse") return vm.listings;
-    if (!session.profile?.username) return [];
-    return vm.listings.filter((l) => l.seller.username === session.profile!.username);
-  }, [vm.listings, tab, session.profile]);
-
-  const mineCount = useMemo(
-    () => (session.profile?.username ? vm.listings.filter((l) => l.seller.username === session.profile!.username).length : 0),
-    [vm.listings, session.profile]
-  );
+  const scopedListings = tab === "browse" ? vm.listings : vm.myListings;
+  const mineCount = vm.myActiveCount;
 
   const collectionOptions = useMemo(() => {
     const map = new Map<string, number>();
@@ -164,6 +164,15 @@ export function MarketplaceScreen() {
     setIdentityFilter(null);
   }
 
+  /** Browse and My Listings are different result sets, so a facet chosen against one ("Base Set
+   * · 4") is meaningless — and its count wrong — against the other. Clearing on switch keeps the
+   * filter row honest instead of showing an active filter matching nothing. */
+  function handleTabChange(next: "browse" | "mine") {
+    if (next === tab) return;
+    setTab(next);
+    handleClearFilters();
+  }
+
   function handleClearFilters() {
     setRarityFilter(null);
     setCollectionFilter(null);
@@ -187,7 +196,7 @@ export function MarketplaceScreen() {
       </View>
 
       <View style={styles.toggleRow}>
-        <Pressable style={styles.toggleBtn} onPress={() => setTab("browse")}>
+        <Pressable style={styles.toggleBtn} onPress={() => handleTabChange("browse")}>
           {tab === "browse" ? (
             <LinearGradient colors={["#B14BFF", "#5B1FD6"]} style={styles.toggleFill}>
               <Text style={styles.toggleLabelActive}>{copy.browse}</Text>
@@ -198,7 +207,7 @@ export function MarketplaceScreen() {
             </View>
           )}
         </Pressable>
-        <Pressable style={styles.toggleBtn} onPress={() => setTab("mine")}>
+        <Pressable style={styles.toggleBtn} onPress={() => handleTabChange("mine")}>
           {tab === "mine" ? (
             <LinearGradient colors={["#B14BFF", "#5B1FD6"]} style={styles.toggleFill}>
               <Text style={styles.toggleLabelActive}>{copy.myListings}</Text>
@@ -236,7 +245,7 @@ export function MarketplaceScreen() {
 
       {tab === "mine" && !session.isSignedIn ? (
         <SignInPrompt title={copy.signInTitle} body={copy.signInBody} />
-      ) : vm.isLoading ? (
+      ) : (tab === "browse" ? vm.isLoading : vm.isLoadingMine) ? (
         <ActivityIndicator style={styles.loading} color={colors.textSecondary} />
       ) : (
         <FlatList
@@ -246,7 +255,15 @@ export function MarketplaceScreen() {
           contentContainerStyle={[styles.grid, { paddingBottom: tabBarClearance }]}
           columnWrapperStyle={styles.gridRow}
           ListEmptyComponent={
-            <Text style={styles.empty}>{tab === "browse" ? copy.empty : copy.myListingsEmpty}</Text>
+            <Text style={styles.empty}>
+              {tab === "mine"
+                ? copy.myListingsEmpty
+                : mineCount > 0
+                  ? // Browse excludes your own listings, so a seller who's listed the only things
+                    // on the market would otherwise see a bare "be the first to list something."
+                    copy.browseEmptyOwnListingsOnly
+                  : copy.empty}
+            </Text>
           }
           renderItem={({ item: listing }: { item: Listing }) => (
             <Pressable
@@ -276,6 +293,15 @@ export function MarketplaceScreen() {
                 {listing.item.collection ?? listing.item.brand ?? ""}
               </Text>
               <Text style={styles.cardPrice}>${(listing.priceCents / 100).toLocaleString()}</Text>
+              {/* Only "Mine" ever carries resolved rows — Browse is active-only by construction,
+                  so an unconditional badge there would be permanent noise saying "Active." */}
+              {tab === "mine" && listing.status !== "active" && (
+                <View style={[styles.statusPill, listing.status === "sold" ? styles.statusSold : styles.statusDelisted]}>
+                  <Text style={[styles.statusText, listing.status === "sold" ? styles.statusTextSold : styles.statusTextDelisted]}>
+                    {listing.status === "sold" ? copy.statusSold : copy.statusDelisted}
+                  </Text>
+                </View>
+              )}
             </Pressable>
           )}
         />
@@ -555,6 +581,20 @@ const styles = StyleSheet.create({
   cardSub: { ...typography.footNote, marginTop: 2, fontSize: 10 },
   cardPrice: { ...typography.title, fontSize: 16, marginTop: 7, color: "#fff" },
   empty: { ...typography.sectionSub, textAlign: "center", marginTop: 60, width: "100%" },
+  statusPill: {
+    alignSelf: "flex-start",
+    marginTop: 7,
+    height: 21,
+    paddingHorizontal: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: "center",
+  },
+  statusSold: { backgroundColor: "rgba(99,232,92,0.16)", borderColor: "rgba(99,232,92,0.45)" },
+  statusDelisted: { backgroundColor: "rgba(255,255,255,0.07)", borderColor: "rgba(255,255,255,0.18)" },
+  statusText: { ...typography.metaLine, fontSize: 9.5, letterSpacing: 0.6 },
+  statusTextSold: { color: "#8BF285" },
+  statusTextDelisted: { color: "rgba(255,255,255,0.55)" },
 });
 
 const sheetStyles = StyleSheet.create({

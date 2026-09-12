@@ -11,6 +11,7 @@ import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { marketplaceService } from "../../services/marketplaceService";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
+import { useActionBarPadding } from "../../navigation/tabBarVisibility";
 import { colors, ink, typography } from "../../theme/tokens";
 import { itemFork as copy, itemDetail as itemDetailCopy } from "../../content/copy";
 import type { AppStackParamList } from "../../navigation/AppNavigator";
@@ -44,6 +45,7 @@ export function ItemForkScreen() {
   // other register, same fallback rule ShelfScreen/HomeScreen already use.
   const isWatch = category === "watches";
   const isCards = category === "cards";
+  const actionBarPadding = useActionBarPadding();
 
   const listingsQuery = useQuery({
     queryKey: ["listings", category],
@@ -203,7 +205,7 @@ export function ItemForkScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: 28 + insets.bottom }]}>
+      <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
         <Text style={styles.howTitle}>{copy.howToGet}</Text>
         <View style={styles.forkRow}>
           <Pressable style={[styles.forkButton, styles.forkLuck]} onPress={handleTryLuck}>

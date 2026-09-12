@@ -4,6 +4,7 @@ import type { Category } from "@grailhaus/shared";
 import { marketplaceService } from "../services/marketplaceService";
 import { NetworkError } from "../services/apiClient";
 import { retryOnceOnNetworkError } from "../lib/retryOnNetworkError";
+import { useAuthStore } from "../state/authStore";
 
 export type BuyResult = { ok: true } | { ok: false; error: string };
 
@@ -51,18 +52,40 @@ export function useBuyListingViewModel() {
   return { isBuying, buy };
 }
 
+/**
+ * Browse and My Listings are two genuinely different server queries now, not one feed sliced
+ * client-side: `/listings` returns other collectors' active listings (the server excludes the
+ * caller's own), and `/listings/mine` returns the seller's own book keyed on their authenticated
+ * id. The old approach — fetch everything and match `seller.username` in the client — both
+ * leaked your own listings into Browse and missed them under "Mine" whenever a seller had no
+ * username set.
+ *
+ * `enabled: isSignedIn` on the mine query keeps it from firing a guaranteed-401 while signed
+ * out; the screen shows its sign-in prompt in that state instead.
+ */
 export function useMarketplaceViewModel(category?: Category) {
   const { isBuying, buy } = useBuyListingViewModel();
+  const isSignedIn = useAuthStore((s) => s.token != null);
 
-  const query = useQuery({
-    queryKey: ["listings", category ?? "all"],
+  const browseQuery = useQuery({
+    queryKey: ["listings", "browse", category ?? "all", isSignedIn],
     queryFn: () => marketplaceService.browse(category),
   });
 
+  const mineQuery = useQuery({
+    queryKey: ["listings", "mine", category ?? "all"],
+    queryFn: () => marketplaceService.mine(category),
+    enabled: isSignedIn,
+  });
+
   return {
-    listings: query.data ?? [],
-    isLoading: query.isLoading,
-    error: query.error ? (query.error as Error).message : null,
+    listings: browseQuery.data ?? [],
+    isLoading: browseQuery.isLoading,
+    error: browseQuery.error ? (browseQuery.error as Error).message : null,
+    myListings: mineQuery.data ?? [],
+    isLoadingMine: isSignedIn && mineQuery.isLoading,
+    /** Active listings only — a sold/delisted row shouldn't inflate the "My Listings" badge. */
+    myActiveCount: (mineQuery.data ?? []).filter((l) => l.status === "active").length,
     isBuying,
     buy,
   };

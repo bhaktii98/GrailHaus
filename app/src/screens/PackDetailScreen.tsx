@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { usePackDetailViewModel } from "../viewmodels/usePackDetailViewModel";
+import { useActionBarPadding } from "../navigation/tabBarVisibility";
 import { useSessionViewModel } from "../viewmodels/useSessionViewModel";
 import { usePackFlowViewModel } from "../viewmodels/usePackFlowViewModel";
 import { useAuthStore } from "../state/authStore";
@@ -47,6 +48,7 @@ export function PackDetailScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [quantity, setQuantity] = useState<1 | 10>(1);
   const isRippingRef = useRef(false);
+  const actionBarPadding = useActionBarPadding();
 
   // Bulk ripping (PRD §46) is offered here — the evergreen shelf's own detail screen — for every
   // card tier. This used to exclude Vault Break, because a batch meant replaying that tier's
@@ -104,7 +106,7 @@ export function PackDetailScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 140 + insets.bottom }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 140 + actionBarPadding }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
@@ -134,7 +136,7 @@ export function PackDetailScreen() {
         <ExpectedValueNote sku={sku} linkLabel={copy.fullOdds} accentColor={accents.cards.top} />
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
         <Pressable onPress={handleOpenSheet} style={styles.ripButtonWrap}>
           <LinearGradient colors={[accents.cards.top, accents.cards.bottom]} style={styles.ripButton}>
             <Text style={styles.ripLabel}>{copy.ripNow}</Text>

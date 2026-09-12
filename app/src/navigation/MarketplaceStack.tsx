@@ -5,7 +5,10 @@ import { ListingDetailScreen } from "../screens/marketplace/ListingDetailScreen"
 import { BuyListingScreen } from "../screens/marketplace/BuyListingScreen";
 
 export type MarketplaceStackParamList = {
-  Marketplace: undefined;
+  /** `initialTab` — set when something else in the app sends the user here with a specific view
+   * in mind, e.g. SellItem's "View in marketplace" landing straight on My Listings rather than
+   * on Browse (where, by design, the listing they just made isn't shown). */
+  Marketplace: { initialTab?: "browse" | "mine" } | undefined;
   ListingDetail: { listing: Listing };
   BuyListing: { listing: Listing };
 };

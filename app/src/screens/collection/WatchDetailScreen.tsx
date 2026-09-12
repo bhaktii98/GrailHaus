@@ -10,7 +10,7 @@ import { PositionCard } from "../../components/PositionCard";
 import { ValueDriftChart } from "../../components/ValueDriftChart";
 import { itemArtGradient } from "../../content/cardArt";
 import { colors, ink } from "../../theme/tokens";
-import { useHideTabBarWhileFocused } from "../../navigation/tabBarVisibility";
+import { useActionBarPadding, useHideTabBarOnScreen } from "../../navigation/tabBarVisibility";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
 import { itemDetail as copy } from "../../content/copy";
 import type { CollectionStackParamList } from "../../navigation/CollectionStack";
@@ -29,7 +29,9 @@ export function WatchDetailScreen() {
   // hardcoding "watches" would show a handbags item its wrong tier names/colors.
   const rarityTiers = useRarityTiers(item.category);
   const [marketValueOpen, setMarketValueOpen] = useState(false);
-  useHideTabBarWhileFocused();
+  // Leaf screen with its own Keep/Sell/Market-value action bar — see CardDetailScreen.
+  useHideTabBarOnScreen();
+  const actionBarPadding = useActionBarPadding();
 
   const heldDays = Math.max(0, Math.floor((Date.now() - new Date(owned.acquiredAt).getTime()) / 86_400_000));
 
@@ -50,7 +52,7 @@ export function WatchDetailScreen() {
   return (
     <View style={styles.fill}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 220 + insets.bottom }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 220 + actionBarPadding }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash
@@ -111,7 +113,7 @@ export function WatchDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
         <View style={styles.actionRow}>
           <Pressable style={styles.keepButton} onPress={() => navigation.goBack()}>
             <Text style={styles.keepLabel}>{copy.keep}</Text>
@@ -239,7 +241,18 @@ const styles = StyleSheet.create({
   },
   valueLabel: { fontFamily: "Outfit_600SemiBold", fontSize: 10, letterSpacing: 2, color: "rgba(246,243,236,0.6)" },
   valueBig: { fontFamily: "Outfit_600SemiBold", fontSize: 30, letterSpacing: -0.3, color: "#fff", marginTop: 5 },
-  footer: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 26, gap: 9, backgroundColor: "#050403" },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 26,
+    paddingTop: 16,
+    gap: 9,
+    backgroundColor: "#050403",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(246,243,236,0.1)",
+  },
   actionRow: { flexDirection: "row", gap: 10 },
   keepButton: {
     flex: 1,

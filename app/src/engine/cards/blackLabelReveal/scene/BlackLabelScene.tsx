@@ -64,6 +64,9 @@ export interface BlackLabelSceneProps {
 const CENTER_Y = 0;
 const BASE_Z = 0.218;
 
+// Hoisted out of useFrame — see the matching note in ../../vaultReveal/scene/VaultScene.tsx.
+const ORBIT_TARGET = new THREE.Vector3(0, CENTER_Y, 0);
+
 export const BlackLabelScene = memo(forwardRef<BlackLabelSceneHandle, BlackLabelSceneProps>(function BlackLabelScene(
   { personality, deck, logo, orbit, onSnapshot, introDolly },
   ref
@@ -263,7 +266,7 @@ export const BlackLabelScene = memo(forwardRef<BlackLabelSceneHandle, BlackLabel
 
     // ---- camera choreography -----------------------------------------------------------------
     if (f.orbit) {
-      const target = new THREE.Vector3(0, CENTER_Y, 0);
+      const target = ORBIT_TARGET;
       camera.position.set(
         target.x + f.orbitRadius * Math.sin(f.orbitPhi) * Math.sin(f.orbitTheta),
         target.y + f.orbitRadius * Math.cos(f.orbitPhi),

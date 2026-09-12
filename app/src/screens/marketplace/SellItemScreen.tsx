@@ -1,15 +1,27 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { CardFace } from "../../components/CardFace";
 import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { marketplaceService, type FeePreview } from "../../services/marketplaceService";
 import { useListingViewModel } from "../../viewmodels/useListingViewModel";
+import { useActionBarPadding, useHideTabBarOnScreen } from "../../navigation/tabBarVisibility";
 import { colors, typography } from "../../theme/tokens";
 import { sellItem as copy } from "../../content/copy";
 import type { CollectionStackParamList } from "../../navigation/CollectionStack";
@@ -33,7 +45,10 @@ export function SellItemScreen() {
   const { owned } = useRoute<Route>().params;
   const item = owned.item;
   const { isWorking, createListing } = useListingViewModel();
-  const insets = useSafeAreaInsets();
+  // Nothing to tab away to mid-listing — this is a committed task with its own back button, and
+  // the pill nav would otherwise sit between "Confirm listing" and the bottom of the screen.
+  useHideTabBarOnScreen();
+  const actionBarPadding = useActionBarPadding();
 
   const [priceText, setPriceText] = useState(String(Math.round(item.currentValueCents / 100)));
   const [preview, setPreview] = useState<FeePreview | null>(null);
@@ -70,6 +85,14 @@ export function SellItemScreen() {
     }
   }
 
+  /** Cross-tab hop: unwind this stack first so Portfolio isn't left parked on a stale "listed"
+   * screen behind the tab switch, then land on Marketplace with My Listings already selected —
+   * the seller's new listing is the first thing there. */
+  function handleViewListing() {
+    navigation.popToTop();
+    navigation.getParent()?.navigate("Marketplace", { screen: "Marketplace", params: { initialTab: "mine" } });
+  }
+
   if (listedPriceCents != null) {
     return (
       <View style={styles.fill}>
@@ -81,10 +104,17 @@ export function SellItemScreen() {
           <Text style={styles.doneTitle}>{copy.liveTitle}</Text>
           <Text style={styles.doneBody}>{copy.liveBody(listedPriceCents)}</Text>
         </View>
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <Pressable style={styles.primaryButton} onPress={() => navigation.popToTop()}>
+        {/* Two ways out, because "I listed it" has two natural next steps: go look at it on the
+            market, or get back to the collection and keep going. Previously only the second
+            existed, which left "where did my listing go?" unanswered at the exact moment the
+            seller was most likely to ask it. */}
+        <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
+          <Pressable style={styles.primaryButton} onPress={handleViewListing}>
             <LinearGradient colors={["#63E85C", "#12864A"]} style={StyleSheet.absoluteFill} />
-            <Text style={styles.primaryLabel}>{copy.done}</Text>
+            <Text style={styles.primaryLabel}>{copy.viewListing}</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryButton} onPress={() => navigation.popToTop()}>
+            <Text style={styles.secondaryLabel}>{copy.done}</Text>
           </Pressable>
         </View>
       </View>
@@ -116,44 +146,62 @@ export function SellItemScreen() {
         </View>
       </View>
 
-      <View style={styles.body}>
-        <Text style={styles.askLabel}>{copy.yourAsk}</Text>
-        <View style={styles.askBox}>
-          <Text style={styles.askDollar}>$</Text>
-          <TextInput
-            style={styles.askInput}
-            value={priceText}
-            onChangeText={setPriceText}
-            keyboardType="decimal-pad"
-            selectionColor={colors.violetTop}
-          />
+      {/* The price field sits mid-screen with the confirm action pinned below it, so the
+          keyboard would otherwise cover both the live fee breakdown and the button the user is
+          trying to reach. Lifting the whole body+footer keeps "type a price → see your net →
+          confirm" visible as one continuous step. */}
+      <KeyboardAvoidingView
+        style={styles.flexFill}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            style={styles.flexFill}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.askLabel}>{copy.yourAsk}</Text>
+            <View style={styles.askBox}>
+              <Text style={styles.askDollar}>$</Text>
+              <TextInput
+                style={styles.askInput}
+                value={priceText}
+                onChangeText={setPriceText}
+                keyboardType="decimal-pad"
+                selectionColor={colors.violetTop}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+              />
+            </View>
+
+            <View style={styles.splitCard}>
+              <Row label={copy.buyerPays} value={`$${priceCents > 0 ? (priceCents / 100).toFixed(2) : "0.00"}`} />
+              {preview && (
+                <>
+                  <Row label={copy.platformFee(preview.feePercent)} value={`−$${(preview.feeCents / 100).toFixed(2)}`} danger />
+                  <View style={styles.hairline} />
+                  <Row label={copy.youReceive} value={`$${(preview.sellerProceedsCents / 100).toFixed(2)}`} big success />
+                </>
+              )}
+              <Text style={styles.netNote}>{copy.netNote}</Text>
+            </View>
+
+            {error && <Text style={styles.error}>{error}</Text>}
+          </ScrollView>
+        </TouchableWithoutFeedback>
+
+        <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
+          <Pressable
+            style={[styles.primaryButton, (isWorking || priceCents <= 0) && styles.disabled]}
+            onPress={handleConfirm}
+            disabled={isWorking || priceCents <= 0}
+          >
+            <LinearGradient colors={["#8FA9FF", "#3F52C4"]} style={StyleSheet.absoluteFill} />
+            {isWorking ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryLabel}>{copy.confirm}</Text>}
+          </Pressable>
         </View>
-
-        <View style={styles.splitCard}>
-          <Row label={copy.buyerPays} value={`$${priceCents > 0 ? (priceCents / 100).toFixed(2) : "0.00"}`} />
-          {preview && (
-            <>
-              <Row label={copy.platformFee(preview.feePercent)} value={`−$${(preview.feeCents / 100).toFixed(2)}`} danger />
-              <View style={styles.hairline} />
-              <Row label={copy.youReceive} value={`$${(preview.sellerProceedsCents / 100).toFixed(2)}`} big success />
-            </>
-          )}
-          <Text style={styles.netNote}>{copy.netNote}</Text>
-        </View>
-
-        {error && <Text style={styles.error}>{error}</Text>}
-      </View>
-
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable
-          style={[styles.primaryButton, (isWorking || priceCents <= 0) && styles.disabled]}
-          onPress={handleConfirm}
-          disabled={isWorking || priceCents <= 0}
-        >
-          <LinearGradient colors={["#8FA9FF", "#3F52C4"]} style={StyleSheet.absoluteFill} />
-          {isWorking ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryLabel}>{copy.confirm}</Text>}
-        </Pressable>
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -201,7 +249,8 @@ const styles = StyleSheet.create({
   itemInfo: { flex: 1, minWidth: 0 },
   itemName: { ...typography.pageHeading, fontSize: 20 },
   itemSub: { ...typography.sectionSub, marginTop: 3 },
-  body: { paddingHorizontal: 22, paddingTop: 26, flex: 1 },
+  flexFill: { flex: 1 },
+  body: { paddingHorizontal: 22, paddingTop: 26, paddingBottom: 24, flexGrow: 1 },
   askLabel: typography.eyebrow,
   askBox: {
     marginTop: 11,
@@ -240,7 +289,17 @@ const styles = StyleSheet.create({
   hairline: { height: 1, backgroundColor: "rgba(255,255,255,0.14)", marginVertical: 14 },
   netNote: { ...typography.footNote, marginTop: 9, lineHeight: 17 },
   error: { ...typography.errorText, marginTop: 14 },
-  footer: { padding: 22 },
+  footer: { padding: 22, gap: 10 },
+  secondaryButton: {
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryLabel: { ...typography.chipLabel, fontSize: 14, color: "rgba(255,255,255,0.8)" },
   primaryButton: {
     height: 60,
     borderRadius: 18,

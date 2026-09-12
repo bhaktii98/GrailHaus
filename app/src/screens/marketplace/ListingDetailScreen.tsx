@@ -12,7 +12,7 @@ import { itemArtGradient } from "../../content/cardArt";
 import { useSessionViewModel } from "../../viewmodels/useSessionViewModel";
 import { useListingViewModel } from "../../viewmodels/useListingViewModel";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
-import { useHideTabBarWhileFocused } from "../../navigation/tabBarVisibility";
+import { useActionBarPadding, useHideTabBarOnScreen } from "../../navigation/tabBarVisibility";
 import { marketplaceService, type FeePreview } from "../../services/marketplaceService";
 import { colors, ink, typography } from "../../theme/tokens";
 import { listingDetail as copy, editPriceSheet as editCopy } from "../../content/copy";
@@ -40,8 +40,14 @@ export function ListingDetailScreen() {
   const rarityTiers = useRarityTiers(item.category);
   const session = useSessionViewModel();
   const { isWorking, delist } = useListingViewModel();
-  const isMine = session.profile?.username != null && session.profile.username === listing.seller.username;
-  useHideTabBarWhileFocused();
+  // Compared on the opaque public id, which both `/me` (Profile.id) and ListingParty.id
+  // externalize from the same `profiles.public_id` column — a username match was the old proxy
+  // for this and quietly failed for any seller who hadn't set one, showing them "Buy now" on
+  // their own listing.
+  const isMine = session.profile?.id != null && session.profile.id === listing.seller.id;
+  // Leaf screen with its own Buy / Edit-price / Delist action bar — see CardDetailScreen.
+  useHideTabBarOnScreen();
+  const actionBarPadding = useActionBarPadding();
 
   async function handleDelist() {
     const result = await delist(listing.id);
@@ -52,7 +58,7 @@ export function ListingDetailScreen() {
   return (
     <View style={styles.fill}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 160 + insets.bottom }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 160 + actionBarPadding }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Wash lives in content coordinates, not as a screen-fixed sibling — a fixed wash
@@ -111,8 +117,22 @@ export function ListingDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
-        {isMine ? (
+      <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
+        {/* A resolved listing has no actions left on it — "My Listings" now includes sold and
+            delisted rows, so this screen has to say what happened instead of offering an Edit
+            price / Delist (or Buy now) that the server would simply reject. */}
+        {listing.status !== "active" ? (
+          <View style={[styles.resolvedNote, listing.status === "sold" && styles.resolvedNoteSold]}>
+            <Ionicons
+              name={listing.status === "sold" ? "checkmark-circle" : "close-circle"}
+              size={17}
+              color={listing.status === "sold" ? "#8BF285" : "rgba(255,255,255,0.55)"}
+            />
+            <Text style={[styles.resolvedText, listing.status === "sold" && styles.resolvedTextSold]}>
+              {listing.status === "sold" ? copy.soldNote : copy.delistedNote}
+            </Text>
+          </View>
+        ) : isMine ? (
           <>
             <Pressable style={styles.editPriceButton} onPress={() => setEditOpen(true)} disabled={isWorking}>
               <Text style={styles.editPriceLabel}>{copy.editPrice}</Text>
@@ -134,7 +154,7 @@ export function ListingDetailScreen() {
         )}
       </View>
 
-      {isMine && (
+      {isMine && listing.status === "active" && (
         <EditPriceModal
           visible={editOpen}
           listing={listing}
@@ -300,7 +320,34 @@ const styles = StyleSheet.create({
   sellerInfo: { flex: 1, minWidth: 0 },
   sellerName: { ...typography.body, fontSize: 13 },
   sellerMeta: { ...typography.footNote, marginTop: 1 },
-  footer: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 22, gap: 10, backgroundColor: ink.groundDeep },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 22,
+    paddingTop: 16,
+    gap: 10,
+    // Opaque ground + hairline so the action bar reads as a fixed bar rather than buttons
+    // floating over whatever text happens to scroll behind them.
+    backgroundColor: ink.groundDeep,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+  },
+  resolvedNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  resolvedNoteSold: { backgroundColor: "rgba(99,232,92,0.12)", borderColor: "rgba(99,232,92,0.4)" },
+  resolvedText: { ...typography.chipLabel, fontSize: 13, color: "rgba(255,255,255,0.6)" },
+  resolvedTextSold: { color: "#8BF285" },
   editPriceButton: {
     height: 54,
     borderRadius: 16,
