@@ -5,6 +5,7 @@ import { runOnJS, useAnimatedReaction, type SharedValue } from "react-native-rea
 import type { OwnedItem, PulledOwnedItem, RarityTier } from "@grailhaus/shared";
 import type { CategoryRevealConfig, RevealPhase } from "./types";
 import { GestureLayer } from "./GestureLayer";
+import { ChoreographyDriver } from "./ChoreographyDriver";
 import { TiltLights } from "./TiltLights";
 import { useDeviceTilt } from "./useDeviceTilt";
 import { playHapticTrack } from "./HapticsTrack";
@@ -144,8 +145,91 @@ export function RevealEngine({
   const currentTier = current ? resolveTier(rarityTiers, current.rarityTierLevel) : null;
   const isRare = current?.rarityTierLevel === maxTierLevel;
 
+  // A timeline reveal (see CategoryRevealConfig.choreographyMode) builds its scene once per item
+  // and hands back bound pose/lights closures. Absent for every category whose reveal *is* its
+  // gesture — those keep using `buildMesh` below, unchanged.
+  const choreographyMode = config.choreographyMode;
+  const mounted = useMemo(() => {
+    if (!choreographyMode || !current || !currentTier) return null;
+    const bound = choreographyMode.mount(current, { tierColor: currentTier.colorHex });
+    return { ...bound, timing: choreographyMode.timing };
+  }, [choreographyMode, current, currentTier]);
+
+  // A timeline scene holds real GPU allocations (a prefiltered environment, a few hundred meshes),
+  // and this engine remounts per item and per pack of a batch — so disposal is not optional.
+  useEffect(() => {
+    if (!mounted) return;
+    return () => mounted.dispose();
+  }, [mounted]);
+
+  function handleChoreographyComplete() {
+    setPhase("settled");
+  }
+
+  // A multi-stage timeline reveal (see RevealChoreography.gestureStages) changes which drag axis it
+  // wants as it advances: The Obsidian Vault's ribbon is drawn sideways, then its lid is lifted
+  // upward. `GestureLayer` derives its axis from one `gesture` value, so the driver announces each
+  // stage and this state re-keys that layer.
+  //
+  // `null` means "no stage has been announced" — every single-stage reveal, and frame one of a
+  // multi-stage one — in which case the category's own configured gesture is used unchanged. That
+  // default is what keeps cards, handbags and the other two watch tiers untouched by this.
+  const [activeStage, setActiveStage] = useState<{
+    id: string;
+    axis: "x" | "y";
+    prompt?: string;
+    index: number;
+  } | null>(null);
+
+  // Reset per item, so a second pull in the same pack starts from its first stage rather than
+  // inheriting the previous item's last one.
+  useEffect(() => {
+    setActiveStage(null);
+  }, [index]);
+
+  // The gesture handed to GestureLayer: the category's own, with the active stage's axis and feel
+  // substituted when one has been announced. A stage's axis maps onto the existing `mode` values
+  // ("tear" reads translationX, "lift-lid" reads -translationY), so no new gesture primitive is
+  // needed for this — only a different selection among what GestureLayer already does.
+  const effectiveGesture = useMemo(() => {
+    if (!activeStage || !mounted) return config.gesture;
+    const stage = mounted.timing.gestureStages?.[activeStage.index];
+    return {
+      mode: activeStage.axis === "x" ? ("tear" as const) : ("lift-lid" as const),
+      velocityThreshold: stage?.velocityThreshold ?? config.gesture.velocityThreshold,
+      travelDistance: stage?.travelDistance ?? config.gesture.travelDistance,
+    };
+  }, [activeStage, mounted, config.gesture]);
+
+  // A stage whose `autoAdvanceAfterS` is set plays itself — the ribbon settling on the floor is
+  // watched, not dragged. The engine must therefore leave `phase` at "opening" (so the driver's
+  // clock keeps running) while offering no gesture for it.
+  const activeStageIsAuto = useMemo(() => {
+    if (!activeStage || !mounted) return false;
+    return mounted.timing.gestureStages?.[activeStage.index]?.autoAdvanceAfterS != null;
+  }, [activeStage, mounted]);
+
+  // Whether another opening gesture is still owed after the current one commits. While true a
+  // committed gesture must NOT advance the engine's own phase past "opening", or the remaining
+  // stages would never be offered.
+  const hasPendingStages = useMemo(() => {
+    if (!mounted) return false;
+    const stages = mounted.timing.gestureStages;
+    if (!stages || stages.length <= 1) return false;
+    const i = activeStage?.index ?? 0;
+    return i < stages.length - 1;
+  }, [mounted, activeStage]);
+
   useEffect(() => {
     if (phase !== "opening" || !current) return;
+    // A timeline reveal owns its own duration: the driver calls `onComplete` when the choreography
+    // actually finishes. This block's fixed hold (commonBeatMs/rareHoldMs — 1.4s/3s for watches)
+    // would otherwise force `settled` while the 12.6s sequence was still mid-motion, cutting the
+    // reveal off around the platform's rise and skipping the presentation and rarity beats
+    // entirely. The narration and haptics below are skipped for the same reason: the choreography
+    // publishes its own phase labels through the driver and fires its own beats pinned to the
+    // motion, so running both would double up one beat out of step.
+    if (config.choreographyMode) return;
     const cancel = playHapticTrack(config.hapticTrack(phase, isRare));
     const holdMs = isRare ? config.timing.rareHoldMs : config.timing.commonBeatMs;
     // A slower, narrated version of the same gesture/hold — not a new phase, just labels laid
@@ -260,7 +344,25 @@ export function RevealEngine({
       </View>
 
       <View style={{ flex: 1 }}>
-        <GestureLayer gesture={config.gesture} onComplete={() => setPhase("opening")} enabled={phase === "idle"}>
+        {/* `gesture` is the active stage's when a multi-stage timeline reveal has announced one,
+            and the category's own otherwise (see `effectiveGesture`). `enabled` additionally stays
+            true through the intermediate stages of such a reveal: once the first gesture commits
+            the engine's phase becomes "opening", but a further gesture is still owed, and gating on
+            `phase === "idle"` alone would leave the user with nothing to drag. An auto-advancing
+            stage (the ribbon settling) offers no gesture, which is the one case where "opening"
+            genuinely means hands-off. */}
+        <GestureLayer
+          gesture={effectiveGesture}
+          onComplete={() => {
+            // A committed gesture with stages still owed must not advance the engine past
+            // "opening" — the driver walks to the next stage itself and re-announces the axis.
+            if (!hasPendingStages) setPhase("opening");
+            else if (phase === "idle") setPhase("opening");
+          }}
+          enabled={
+            phase === "idle" || (phase === "opening" && hasPendingStages && !activeStageIsAuto)
+          }
+        >
           {(openProgress) => (
             <>
               {!isTear && (
@@ -291,11 +393,47 @@ export function RevealEngine({
                   )
                 }
               >
-                <Canvas camera={{ position: config.camera.position, fov: config.camera.fov }}>
-                  <TiltLights lighting={config.lighting} tilt={tilt} />
-                  <ExploreOrbitGroup handle={orbit}>
-                    {config.buildMesh(current, { openProgress, tierColor: currentTier.colorHex })}
-                  </ExploreOrbitGroup>
+                <Canvas
+                  camera={{
+                    position: config.camera.position,
+                    fov: config.camera.fov,
+                    // A timeline reveal may model at true real-world scale (the vault is 0.26m
+                    // wide with millimetre detail, framed from ~0.35m), where r3f's default
+                    // `near: 0.1` clips the subject away as soon as the user zooms in. A category
+                    // can declare its own clipping planes; everything else keeps r3f's defaults.
+                    ...(config.camera.near != null ? { near: config.camera.near } : {}),
+                    ...(config.camera.far != null ? { far: config.camera.far } : {}),
+                  }}
+                >
+                  {mounted ? (
+                    <>
+                      {/* A timeline reveal supplies its own light rig as part of its scene, so the
+                          category's flat ambient/directional pair (and its tilt sway) would fight
+                          the choreography's own escalating spots rather than add to them. */}
+                      <ChoreographyDriver
+                        timing={mounted.timing}
+                        pose={mounted.pose}
+                        lights={mounted.lights}
+                        openProgress={openProgress}
+                        gestureActive={phase === "idle"}
+                        playing={phase === "opening"}
+                        onComplete={handleChoreographyComplete}
+                        onPhaseChange={setBeatLabel}
+                        cameraReleased={phase === "settled"}
+                        // Re-keys the gesture layer onto each stage's own axis as the reveal
+                        // advances. Never fires for a single-stage reveal.
+                        onStageChange={setActiveStage}
+                      />
+                      <ExploreOrbitGroup handle={orbit}>{mounted.node}</ExploreOrbitGroup>
+                    </>
+                  ) : (
+                    <>
+                      <TiltLights lighting={config.lighting} tilt={tilt} />
+                      <ExploreOrbitGroup handle={orbit}>
+                        {config.buildMesh(current, { openProgress, tierColor: currentTier.colorHex })}
+                      </ExploreOrbitGroup>
+                    </>
+                  )}
                 </Canvas>
               </Renderer3DBoundary>
             </>
