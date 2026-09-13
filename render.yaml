@@ -2,7 +2,7 @@ services:
   - type: web
     name: grailhaus-server
     runtime: node
-    plan: starter
+    plan: free
     region: singapore
     rootDir: .
     # Installs every workspace (so @grailhaus/shared resolves for @grailhaus/server), then builds
