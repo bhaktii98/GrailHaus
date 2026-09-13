@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "GrailHaus",
+    "slug": "grailhaus",
+    "scheme": "grailhaus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0716",
+    "plugins": [
+      "expo-dev-client",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B0716"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.grailhaus.app"
+    },
+    "android": {
+      "package": "com.grailhaus.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0716",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1bed72b8-56de-425d-8d7c-1814ca44a7e0"
+      }
+    },
+    "owner": "dangri"
+  }
+}

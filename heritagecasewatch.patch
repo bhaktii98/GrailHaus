@@ -1,0 +1,293 @@
+diff --git a/app/src/engine/components/WatchMesh.tsx b/app/src/engine/components/WatchMesh.tsx
+index d0678c8..6c8009a 100644
+--- a/app/src/engine/components/WatchMesh.tsx
++++ b/app/src/engine/components/WatchMesh.tsx
+@@ -1,14 +1,58 @@
+ import { useRef } from "react";
+ import { useFrame } from "@react-three/fiber/native";
+-import type { Mesh } from "three";
++import type { Group, Mesh, PointLight } from "three";
+ import type { SharedValue } from "react-native-reanimated";
+ 
+-/**
+- * A crate lid lifting off a watch. Lighter/stubbed on purpose — proves the
+- * registry works for a second, visually distinct category; the full
+- * luxury-unboxing choreography is later Deliverable 1 depth.
+- * `tierColor` comes from the pack's admin-configurable rarity_tiers data.
+- */
++// Heritage Case, ported from the Claude Design handoff (heritage-case.html /
++// heritage-case.js / three-d-stage.js) onto the `lift-lid-box` archetype this app already
++// has wired up. The desktop prototype builds a millimeter-accurate case (ExtrudeGeometry
++// walls with real cavities, canvas-baked wood-grain/emblem textures, a PMREM environment
++// map, 2048px shadow maps) — none of that is a fit for an expo-gl reveal that has to hold
++// 60fps on a mid-range phone next to a shared, unmodified RevealEngine, so this rebuilds
++// the same *choreography* (resisted lift, dead-air dwell, cushion-and-watch rising
++// together, one glint, a small hero tilt, no bounce anywhere) out of primitive geometry
++// and flat PBR colors, the same budget CardMesh/HandbagMesh already spend.
++//
++// Timing is tied to the actual `watches` row in categories (seedCategories.ts:
++// commonBeatMs 1400 / rareHoldMs 3000, the window RevealEngine holds `phase: "opening"`
++// open before moving on) rather than either prototype's own seconds — the choreography
++// below is paced to read as complete, unhurried, inside the *shorter* of those two
++// windows, so a common pull never looks cut off.
++//
++// Every position below is additionally a resting-state default in the JSX itself (lid
++// closed, platform at its base height, pivot untilted) — useFrame only ever adjusts
++// refs, so a frame that renders before the first useFrame tick still shows the closed
++// case, not a pop from zero.
++
++const WALNUT = "#3d2318";
++const BRASS = "#c9a24b"; // matches this category's admin-configured palette accent
++const BRASS_DARK = "#8a6c39";
++const VELVET = "#3a0f18";
++const VELVET_LINING = "#c9a97c";
++const LEATHER = "#241209";
++const STEEL = "#c7cdd2";
++const HAND_DARK = "#1c1c1c";
++const GLINT = "#fff6df";
++
++const W = 1.3, D = 1.0;
++const BODY_H = 0.42, LID_H = 0.26;
++const WALL = 0.05;
++const RECESS = 0.16;
++
++const LID_MAX_RAD = 1.92; // ~110°, same travel as the source prototype
++const LID_DAMP = 5; // critically-damped approach rate, no overshoot at either stop
++const OPEN_LATCH = 0.98; // openProgress past this = "the lid is open," latched, never undone
++
++const CUSHION_R = 0.14;
++const PLATFORM_BASE_Y = BODY_H - RECESS + CUSHION_R;
++const RISE_HEIGHT = 0.16; // a visible but modest lift — "a few centimeters," not a launch
++const DWELL_S = 0.3; // pure velvet/interior beat before anything stirs
++const RISE_S = 0.55;
++const HERO_TILT_X = 0.3; // tilt the dial toward the lens
++const HERO_TURN_Y = 0.22; // ~13° hero turn
++const GLINT_START = 0.35; // fraction of the rise before the crystal glint is allowed to fire
++const GLINT_S = 0.45;
++
+ export function WatchMesh({
+   tierColor,
+   openProgress,
+@@ -16,30 +60,204 @@ export function WatchMesh({
+   tierColor: string;
+   openProgress: SharedValue<number>;
+ }) {
+-  const lidRef = useRef<Mesh>(null);
++  const lidRef = useRef<Group>(null);
++  const platformRef = useRef<Group>(null);
++  const watchPivotRef = useRef<Group>(null);
++  const interiorLightRef = useRef<PointLight>(null);
++  const glintRef = useRef<Mesh>(null);
++
++  // Choreography state lives in refs, not React state — every field below is written and
++  // read only inside useFrame, so a 60fps reveal never triggers a single re-render.
++  const lidAngle = useRef(0);
++  const opened = useRef(false);
++  const openedAt = useRef(0);
++  const glintStartedAt = useRef<number | null>(null);
++  const glintDone = useRef(false);
+ 
+-  useFrame(() => {
+-    if (!lidRef.current) return;
++  useFrame((state, delta) => {
+     const p = openProgress.value;
+-    lidRef.current.position.y = 0.2 + p * 1.2;
+-    lidRef.current.rotation.x = -p * 0.8;
++    const elapsed = state.clock.elapsedTime;
++
++    // Lid: eases toward whatever the gesture (or its post-release settle) currently wants,
++    // never overshooting — the tonal opposite of a card's tear/snap.
++    const targetAngle = Math.max(0, Math.min(1, p)) * LID_MAX_RAD;
++    lidAngle.current += (targetAngle - lidAngle.current) * Math.min(1, delta * LID_DAMP);
++    if (lidRef.current) lidRef.current.rotation.x = -lidAngle.current;
++
++    if (!opened.current && p >= OPEN_LATCH) {
++      opened.current = true;
++      openedAt.current = elapsed;
++    }
++
++    // Interior light breathes in with the lid itself, well before the watch ever moves —
++    // matches the source's "light spills in" beat.
++    const openness = lidAngle.current / LID_MAX_RAD;
++    if (interiorLightRef.current) {
++      interiorLightRef.current.intensity = 0.55 * Math.max(0, openness - 0.1);
++    }
++
++    if (opened.current) {
++      const t = elapsed - openedAt.current;
++      const riseLinear = Math.max(0, Math.min(1, (t - DWELL_S) / RISE_S));
++      const riseEased = 1 - (1 - riseLinear) ** 3; // ease-out cubic: weighted, no bounce
++
++      if (platformRef.current) platformRef.current.position.y = PLATFORM_BASE_Y + RISE_HEIGHT * riseEased;
++      if (watchPivotRef.current) {
++        watchPivotRef.current.rotation.x = HERO_TILT_X * riseEased;
++        watchPivotRef.current.rotation.y = HERO_TURN_Y * riseEased;
++      }
++      if (interiorLightRef.current) {
++        interiorLightRef.current.intensity += 0.5 * riseEased;
++      }
++
++      if (!glintDone.current && riseEased > GLINT_START) {
++        if (glintStartedAt.current === null) glintStartedAt.current = elapsed;
++        const gt = Math.min(1, (elapsed - glintStartedAt.current) / GLINT_S);
++        const mat = glintRef.current?.material;
++        if (glintRef.current && mat && !Array.isArray(mat)) {
++          glintRef.current.position.x = -0.09 + gt * 0.18;
++          mat.opacity = Math.sin(gt * Math.PI) * 0.6;
++        }
++        if (gt >= 1) glintDone.current = true;
++      }
++    }
+   });
+ 
+   return (
+-    <group>
+-      <mesh position={[0, -0.3, 0]}>
+-        <cylinderGeometry args={[0.6, 0.6, 0.15, 32]} />
+-        {/* metalness this high needs an environment/reflection map to read as anything but
+-            near-black under a couple of plain point/directional lights — this scene has neither,
+-            so it's tuned down from the original 0.9/0.15 (which rendered the whole base
+-            invisible against the near-black background, reading as "the reveal screen is just
+-            black") to something that still looks metallic but actually catches direct light. */}
+-        <meshStandardMaterial color={tierColor} metalness={0.5} roughness={0.35} />
+-      </mesh>
+-      <mesh ref={lidRef} position={[0, 0.2, 0]}>
+-        <boxGeometry args={[1.4, 0.4, 1.4]} />
+-        <meshStandardMaterial color="#1a1a1a" metalness={0.3} roughness={0.6} />
++    // This category's Canvas has no orbit controls — config.camera is a fixed shot at the
++    // world origin (see RevealEngine.tsx), so unlike the source prototype (which frames
++    // this box through a user-orbitable camera) the geometry itself has to sit centered on
++    // origin rather than resting on a y=0 floor. Shifted down by one body-height so the
++    // opening/watch sit near origin and the box reads centered against the fixed shot —
++    // same convention CardMesh/HandbagMesh already use.
++    <group position={[0, -BODY_H, 0]}>
++      {/* Warm interior glow — the one bespoke light this archetype adds beyond the category's
++          own configured ambient/directional pair (TiltLights), on purpose: a single extra
++          point light is the cheapest way to sell "light spilling into the case" and stays well
++          inside a mobile GL budget. No shadows anywhere in this tree. */}
++      <pointLight ref={interiorLightRef} color="#ffcf8f" intensity={0} distance={1.6} decay={2} position={[0, BODY_H + 0.14, 0.05]} />
++
++      {/* Body */}
++      <mesh position={[0, BODY_H / 2, 0]}>
++        <boxGeometry args={[W, BODY_H, D]} />
++        <meshStandardMaterial color={WALNUT} roughness={0.4} metalness={0.05} />
++      </mesh>
++      <mesh position={[0, BODY_H - RECESS / 2, 0]}>
++        <boxGeometry args={[W - WALL * 2, RECESS, D - WALL * 2]} />
++        <meshStandardMaterial color={VELVET} roughness={0.95} metalness={0} />
++      </mesh>
++      {/* Rim trim — four brass strips outlining the opening, standing in for the source's
++          continuous inlay ring without an extruded hollow shape. */}
++      <mesh position={[0, BODY_H + 0.005, D / 2 - 0.015]}>
++        <boxGeometry args={[W - 0.02, 0.02, 0.03]} />
++        <meshStandardMaterial color={BRASS_DARK} roughness={0.4} metalness={0.9} />
++      </mesh>
++      <mesh position={[0, BODY_H + 0.005, -(D / 2 - 0.015)]}>
++        <boxGeometry args={[W - 0.02, 0.02, 0.03]} />
++        <meshStandardMaterial color={BRASS_DARK} roughness={0.4} metalness={0.9} />
++      </mesh>
++      <mesh position={[W / 2 - 0.015, BODY_H + 0.005, 0]}>
++        <boxGeometry args={[0.03, 0.02, D - 0.02]} />
++        <meshStandardMaterial color={BRASS_DARK} roughness={0.4} metalness={0.9} />
++      </mesh>
++      <mesh position={[-(W / 2 - 0.015), BODY_H + 0.005, 0]}>
++        <boxGeometry args={[0.03, 0.02, D - 0.02]} />
++        <meshStandardMaterial color={BRASS_DARK} roughness={0.4} metalness={0.9} />
+       </mesh>
++
++      {/* Hinge barrels */}
++      <mesh position={[0.35, BODY_H - 0.02, -D / 2 - 0.02]} rotation={[0, 0, Math.PI / 2]}>
++        <cylinderGeometry args={[0.03, 0.03, 0.18, 16]} />
++        <meshStandardMaterial color={BRASS_DARK} roughness={0.45} metalness={0.95} />
++      </mesh>
++      <mesh position={[-0.35, BODY_H - 0.02, -D / 2 - 0.02]} rotation={[0, 0, Math.PI / 2]}>
++        <cylinderGeometry args={[0.03, 0.03, 0.18, 16]} />
++        <meshStandardMaterial color={BRASS_DARK} roughness={0.45} metalness={0.95} />
++      </mesh>
++
++      {/* Lid — pivots at the back-top hinge line (group origin), same offset-mesh-inside-a-
++          hinged-group trick HandbagMesh's flap uses, so rotating the group swings the lid
++          around its own back edge instead of its center. */}
++      <group position={[0, BODY_H, -D / 2]} ref={lidRef}>
++        <mesh position={[0, LID_H / 2, D / 2]}>
++          <boxGeometry args={[W, LID_H, D]} />
++          <meshStandardMaterial color={WALNUT} roughness={0.4} metalness={0.05} />
++        </mesh>
++        <mesh position={[0, 0.03, D / 2]}>
++          <boxGeometry args={[W - WALL * 2, 0.02, D - WALL * 2]} />
++          <meshStandardMaterial color={VELVET_LINING} roughness={0.9} metalness={0} />
++        </mesh>
++        <mesh position={[0, LID_H + 0.011, D / 2]}>
++          <cylinderGeometry args={[0.09, 0.09, 0.02, 32]} />
++          <meshStandardMaterial color={BRASS} roughness={0.35} metalness={0.9} />
++        </mesh>
++        <mesh position={[0, LID_H + 0.021, D / 2]} rotation={[Math.PI / 2, 0, 0]}>
++          <torusGeometry args={[0.095, 0.008, 8, 32]} />
++          <meshStandardMaterial color={BRASS_DARK} roughness={0.4} metalness={0.9} />
++        </mesh>
++        <mesh position={[0, 0.03, D - 0.02]}>
++          <boxGeometry args={[0.12, 0.05, 0.02]} />
++          <meshStandardMaterial color={BRASS} roughness={0.35} metalness={0.9} />
++        </mesh>
++      </group>
++
++      {/* Platform — the cushion and the watch rise as one piece; only `watchPivot` (below)
++          tilts, so the cushion itself stays put under it, exactly as in the source. */}
++      <group position={[0, PLATFORM_BASE_Y, 0]} ref={platformRef}>
++        <mesh rotation={[0, 0, Math.PI / 2]}>
++          <capsuleGeometry args={[CUSHION_R, 0.55, 8, 16]} />
++          <meshStandardMaterial color={LEATHER} roughness={0.85} metalness={0.05} />
++        </mesh>
++
++        <group position={[0, CUSHION_R, 0]} ref={watchPivotRef}>
++          {/* Case + bezel */}
++          <mesh position={[0, 0.045, 0]}>
++            <cylinderGeometry args={[0.16, 0.16, 0.09, 32]} />
++            <meshStandardMaterial color={STEEL} roughness={0.25} metalness={0.9} />
++          </mesh>
++          <mesh position={[0, 0.09, 0]} rotation={[Math.PI / 2, 0, 0]}>
++            <torusGeometry args={[0.16, 0.018, 10, 32]} />
++            <meshStandardMaterial color={BRASS} roughness={0.3} metalness={0.9} />
++          </mesh>
++          {/* Crystal */}
++          <mesh position={[0, 0.096, 0]}>
++            <cylinderGeometry args={[0.145, 0.145, 0.012, 32]} />
++            <meshStandardMaterial color="#ffffff" roughness={0.05} metalness={0} transparent opacity={0.22} />
++          </mesh>
++          {/* Dial — the one surface tierColor drives, same convention CardMesh/HandbagMesh use
++              of putting the rarity color on the piece's own most camera-facing surface. */}
++          <mesh position={[0, 0.093, 0]}>
++            <cylinderGeometry args={[0.135, 0.135, 0.008, 32]} />
++            <meshStandardMaterial color={tierColor} roughness={0.4} metalness={0.15} />
++          </mesh>
++          {/* Hands */}
++          <mesh position={[0, 0.1, 0]} rotation={[0, 0, 0.3]}>
++            <boxGeometry args={[0.008, 0.09, 0.006]} />
++            <meshStandardMaterial color={HAND_DARK} roughness={0.5} metalness={0.3} />
++          </mesh>
++          <mesh position={[0, 0.1, 0]} rotation={[0, 0, -0.9]}>
++            <boxGeometry args={[0.008, 0.06, 0.006]} />
++            <meshStandardMaterial color={HAND_DARK} roughness={0.5} metalness={0.3} />
++          </mesh>
++          {/* Crown */}
++          <mesh position={[0.18, 0.045, 0]} rotation={[0, 0, Math.PI / 2]}>
++            <cylinderGeometry args={[0.02, 0.02, 0.04, 16]} />
++            <meshStandardMaterial color={BRASS} roughness={0.3} metalness={0.9} />
++          </mesh>
++          {/* Bracelet loop, concentric with the cushion axis so it reads as wrapped, not buried */}
++          <mesh position={[0, -0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
++            <torusGeometry args={[0.16, 0.035, 10, 32]} />
++            <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.85} />
++          </mesh>
++          {/* Glint — a single unlit highlight sweeping the crystal once, cheap on purpose
++              (meshBasicMaterial skips lighting entirely; a glint should read as blown-out
++              regardless of scene light direction). */}
++          <mesh ref={glintRef} position={[-0.09, 0.097, 0]} rotation={[-Math.PI / 2, 0, 0]}>
++            <circleGeometry args={[0.02, 16]} />
++            <meshBasicMaterial color={GLINT} transparent opacity={0} />
++          </mesh>
++        </group>
++      </group>
+     </group>
+   );
+ }

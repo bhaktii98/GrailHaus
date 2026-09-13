@@ -1,0 +1,2545 @@
+diff --git a/app/src/engine/cards/blackLabelReveal/BlackLabelTearStage.tsx b/app/src/engine/cards/blackLabelReveal/BlackLabelTearStage.tsx
+index 78f75d7..855ce83 100644
+--- a/app/src/engine/cards/blackLabelReveal/BlackLabelTearStage.tsx
++++ b/app/src/engine/cards/blackLabelReveal/BlackLabelTearStage.tsx
+@@ -22,8 +22,7 @@ import Animated, {
+ } from "react-native-reanimated";
+ import type { SkImage } from "@shopify/react-native-skia";
+ import { blackLabelPersonality } from "./config/blackLabel.config";
+-import { VaultScene, type VaultStateSnapshot } from "../vaultReveal/scene/VaultScene";
+-import { buildBlackLabelPackObject } from "./engine/buildBlackLabelPackObject";
++import { BlackLabelScene, type BlackLabelStateSnapshot } from "./scene/BlackLabelScene";
+ import { loadLogoImage } from "../reveal/engine/textures";
+ import { VaultVignette } from "../vaultReveal/ui/VaultVignette";
+ import type { VaultCardData } from "../vaultReveal/config/types";
+@@ -44,8 +43,9 @@ export function BlackLabelTearStage({ onTearComplete }: { onTearComplete: () =>
+   const { width, height } = useWindowDimensions();
+   const [logo, setLogo] = useState<SkImage | null>(null);
+   const [ready, setReady] = useState(false);
+-  const [snapshot, setSnapshot] = useState<VaultStateSnapshot>({
+-    phase: "idle", hero: -1, ready: false, running: false, dim: 0, shown: 0, heroLabel: null,
++  const [snapshot, setSnapshot] = useState<BlackLabelStateSnapshot>({
++    phase: "idle", hero: -1, ready: false, running: false, dim: 0, shown: 0,
++    fireLevel: 0, surge: 0, heroLabel: null,
+   });
+   const personality = blackLabelPersonality;
+   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+@@ -56,8 +56,10 @@ export function BlackLabelTearStage({ onTearComplete }: { onTearComplete: () =>
+   const kickerIn = useSharedValue(0);
+   const titleIn = useSharedValue(0);
+   const metaIn = useSharedValue(0);
+-  // A slow, continuous breathing glow on the "Break" emphasis word — a small living/premium
+-  // touch, cheap (pure opacity+scale on one Text node).
++  // A slow, continuous breathing glow on the title — the design's own warm text-shadow
++  // (`0 0 40px rgba(255,140,50,.28)`) held static, animated here instead so it reads as living
++  // firelight rather than a printed effect. Small living/premium touch, cheap (pure
++  // opacity+scale on one Text node).
+   const shimmer = useSharedValue(0);
+ 
+   useEffect(() => {
+@@ -97,12 +99,8 @@ export function BlackLabelTearStage({ onTearComplete }: { onTearComplete: () =>
+   }));
+   const kickerRuleStyle = useAnimatedStyle(() => ({ width: 26 * kickerIn.value }));
+   const titleStyle = useAnimatedStyle(() => ({
+-    opacity: titleIn.value,
+-    transform: [{ translateY: (1 - titleIn.value) * 10 }],
+-  }));
+-  const emphasisStyle = useAnimatedStyle(() => ({
+-    opacity: 0.86 + shimmer.value * 0.14,
+-    transform: [{ scale: 1 + shimmer.value * 0.015 }],
++    opacity: titleIn.value * (0.9 + shimmer.value * 0.1),
++    transform: [{ translateY: (1 - titleIn.value) * 10 }, { scale: 1 + shimmer.value * 0.012 }],
+   }));
+   const metaStyle = useAnimatedStyle(() => ({
+     opacity: metaIn.value,
+@@ -120,28 +118,34 @@ export function BlackLabelTearStage({ onTearComplete }: { onTearComplete: () =>
+   const hint = personality.copy.hintDrag;
+   const hintOpacity = Math.max(0, 1 - snapshot.shown * 1.6);
+ 
++  // The design's #vign reads --fire/--surge off the render loop to intensify the ambient glow
++  // as the fire builds — approximated here with a plain opacity ramp on the same Skia vignette
++  // rather than threading a second live value through Skia's declarative <Canvas>, since a
++  // React-state-driven style (snapshot only updates on a real change, see BlackLabelScene's own
++  // throttling) is cheap enough not to need Reanimated for this one number.
++  const vignetteOpacity = Math.min(1, 0.82 + snapshot.fireLevel * 0.4 + snapshot.surge * 0.5);
++
+   return (
+     <View style={styles.root}>
+-      <VaultVignette width={width} height={height} glowColor="rgba(180,140,60,0.20)" />
++      <View style={{ opacity: vignetteOpacity }}>
++        <VaultVignette width={width} height={height} glowColor="rgba(255,106,24,0.22)" />
++      </View>
+ 
+-      {/* Camera starts pulled back to 0.34 (vs. the pack's resting 0.214) — `introDolly` on
+-          VaultScene skips its usual instant snap-to-position on mount, so this eases smoothly
+-          in over about a second instead of appearing already framed. A small cinematic touch
+-          Tier 1's tear doesn't have, and free performance-wise — it's just where the camera
+-          starts, not an extra render pass. */}
++      {/* Camera starts pulled back to 0.34 (vs. the pack's resting 0.218) — `introDolly` skips
++          the usual instant snap-to-position on mount, so this eases smoothly in over about a
++          second instead of appearing already framed. */}
+       <Canvas
+         style={styles.canvas}
+         camera={{ position: [0, 0.006, 0.34], fov: 45, near: 0.01, far: 2 }}
+         gl={{ antialias: false, alpha: true }}
+       >
+-        <VaultScene
++        <BlackLabelScene
+           personality={personality}
+           deck={EMPTY_DECK}
+           logo={logo}
+           orbit={false}
+           onSnapshot={setSnapshot}
+           introDolly
+-          buildPack={buildBlackLabelPackObject}
+         />
+       </Canvas>
+ 
+@@ -151,10 +155,8 @@ export function BlackLabelTearStage({ onTearComplete }: { onTearComplete: () =>
+             <Animated.View style={[styles.kickerRule, kickerRuleStyle]} />
+             <Text style={styles.kicker}>{personality.copy.kicker}</Text>
+           </Animated.View>
+-          <Animated.Text style={[styles.title, titleStyle]}>
+-            {personality.copy.title}
+-            <Animated.Text style={[styles.titleEmphasis, emphasisStyle]}>{personality.copy.titleEmphasis}</Animated.Text>
+-          </Animated.Text>
++          <Animated.Text style={[styles.title, titleStyle]}>{personality.copy.title}</Animated.Text>
++          <Animated.Text style={[styles.sub, titleStyle]}>Collectible cards</Animated.Text>
+           <Animated.View style={[styles.metaRow, metaStyle]}>
+             {personality.copy.meta.map((m) => (
+               <View key={m} style={styles.metaChip}>
+@@ -186,8 +188,15 @@ const styles = StyleSheet.create({
+   kicker: {
+     fontFamily: mono, fontSize: 10, letterSpacing: 3.4, color: "#8a6a2e", textTransform: "uppercase",
+   },
+-  title: { marginTop: 10, fontSize: 30, fontWeight: "500", color: "#f4ece0", alignSelf: "flex-start" },
+-  titleEmphasis: { fontStyle: "italic", color: "#c9a24a" },
++  title: {
++    marginTop: 9, fontSize: 32, fontWeight: "300", letterSpacing: 6, textTransform: "uppercase",
++    color: "#f7e6bd", alignSelf: "flex-start",
++    textShadowColor: "rgba(255,140,50,0.5)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 18,
++  },
++  sub: {
++    marginTop: 6, fontFamily: mono, fontSize: 9, letterSpacing: 4, textTransform: "uppercase",
++    color: "rgba(242,236,226,0.44)", alignSelf: "flex-start",
++  },
+   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14, alignSelf: "flex-start" },
+   metaChip: {
+     borderWidth: 1,
+diff --git a/app/src/engine/cards/blackLabelReveal/art/blackLabelArt.ts b/app/src/engine/cards/blackLabelReveal/art/blackLabelArt.ts
+index fa80895..a209b72 100644
+--- a/app/src/engine/cards/blackLabelReveal/art/blackLabelArt.ts
++++ b/app/src/engine/cards/blackLabelReveal/art/blackLabelArt.ts
+@@ -1,25 +1,33 @@
+-// The Tier 3 "Black Label" pack artwork — a palette-and-copy variant of
+-// ../../vaultReveal/art/vaultArt.ts (Tier 2's "Vault Break" pack), not a reinterpretation: the
+-// same silhouette, crimp, tear-channel, medallion and edition-plate construction, generated by
+-// running that file's source through a mechanical color/text substitution (its royal-violet/
+-// plum satin + pale champagne foil become onyx/graphite + a heavier bronze-gold — the two
+-// colors PackTile.tsx's `ART_GRADIENT.black_label` already anchors this tier to: `#FFF0CC` →
+-// `#5C4520`) rather than hand-redrawn, so the two tiers' shells stay structurally identical and
+-// only their finish differs — matching the PRD's own framing of Black Label as "the same kind
+-// of pack, at higher stakes," not a different object. See this folder's README note (if present)
+-// or the generating script for the exact substitution table if the two files ever need to be
+-// reconciled after an edit to one of them.
++// Tier 3 "Black Label" pack artwork — ported from the actual Claude Design handoff
++// (apex-art.js, from the grailhaus-vault-break.html "Black Label" canvas), not the invented
++// bronze-on-onyx palette an earlier pass here used before the real design was available. Obsidian
++// black foil with a quilted diamond lattice whose seams run molten (gold hairline engraving,
++// live heat glowing through the pressed grooves), an eight-point "apex" diamond mark in place of
++// Vault Break's octagon medallion, and an ember thread along the tear channel. Same construction
++// approach as ../../vaultReveal/art/vaultArt.ts (Skia offscreen canvas, `s = width/DESIGN_W`
++// scaling) but NOT a palette substitution of it this time — this is its own design, ported
++// function-for-function from the real source.
+ //
+-// Every pixel constant is scaled by `s = width / DESIGN_WIDTH` — see
+-// ../engine/buildBlackLabelPackObject.ts for the phone-appropriate resolution this buys back.
++// Two simplifications versus the DOM canvas original, both about two-point (start-circle +
++// end-circle) radial gradients Skia's simple MakeRadialGradient can't express directly:
++// obsidianBase's sheen and apexMark's well both use a slightly offset/sized start circle in the
++// original (`createRadialGradient(x0,y0,r0,x1,y1,r1)` with r0>0 and/or (x0,y0)!=(x1,y1)). The
++// true fix is Skia's MakeTwoPointConicalGradient; given how subtle the resulting asymmetry is at
++// this element's size (a few percent of the gradient's own radius), this port uses a single-circle
++// MakeRadialGradient centered at the more visually significant point instead — noted here rather
++// than left silent, and worth revisiting with MakeTwoPointConicalGradient if a reviewer sees a
++// visible difference against the original.
+ import {
+   Skia,
+   ClipOp,
+   BlendMode,
+   TileMode,
+   PaintStyle,
++  StrokeCap,
++  BlurStyle,
+   type SkCanvas,
+   type SkImage,
++  type SkPaint,
+ } from "@shopify/react-native-skia";
+ import {
+   makeSurface,
+@@ -30,32 +38,46 @@ import {
+   drawTrackedText,
+ } from "../../reveal/art/canvasHelpers";
+ import {
+-  metalShader as baseMetalShader,
++  metalShader,
+   embossText,
+   hairlines,
+   grooveLine,
+   guilloche,
+   microBlock,
+   barcode,
++  noise1,
+ } from "../../vaultReveal/art/artUtil";
+ import type { GradientStop } from "../../reveal/art/canvasHelpers";
+ 
+-// Black Label's own metal ramp — a heavier, darker bronze-gold than Vault Break's pale
+-// champagne, matching PackTile.tsx's black_label ART_GRADIENT anchor ("#FFF0CC" → "#5C4520").
+-const BRONZE_STOPS: GradientStop[] = [
+-  [0, "#4a3512"], [0.14, "#c9a24a"], [0.32, "#f0dba0"],
+-  [0.5, "#8a6a2e"], [0.66, "#d8b96a"], [0.86, "#3a2a10"], [1, "#1f1608"],
+-];
+-const bronzeShader = (y0: number, y1: number) => baseMetalShader(y0, y1, BRONZE_STOPS);
+-
+ export interface PixelImage {
+   data: Uint8Array;
+   width: number;
+   height: number;
+ }
+ 
++export const SEAM_FRAC = 0.232;
++export const FLAP_FRAC = 0.078;
+ const DESIGN_W = 800;
+-const TEETH = 16;
++const TEETH = 18;
++
++const IVORY = "#f2ece2";
++const GOLD = "#d8b877";
++const INK = "#04040a";
++
++const GOLD_STOPS: GradientStop[] = [
++  [0, "#4a381a"], [0.16, "#c9a86a"], [0.34, "#f7e6bd"],
++  [0.5, "#a5854a"], [0.68, "#e2caa0"], [0.86, "#7a5f30"], [1, "#332510"],
++];
++const goldShader = (y0: number, y1: number) => metalShader(y0, y1, GOLD_STOPS);
++
++/** A stroke paint with a soft additive-feeling glow — Skia stand-in for `ctx.shadowBlur` on a
++ * stroked path (no direct equivalent; a blurred mask filter on the same paint reads the same at
++ * this scale). */
++function glowStroke(color: string, width: number, blur: number): SkPaint {
++  const p = strokePaint(color, width);
++  p.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, blur, true));
++  return p;
++}
+ 
+ function silhouettePath(w: number, h: number, toothDepth: number) {
+   const path = Skia.Path.Make();
+@@ -74,176 +96,228 @@ function silhouettePath(w: number, h: number, toothDepth: number) {
+   return path;
+ }
+ 
+-// Satin onyx substrate: graphite in the shadows, a bronze sheen band, near-black at both
+-// edges. Cross-lit so the pack has a lit side.
+-function satinBase(canvas: SkCanvas, w: number, h: number, s: number) {
++// Obsidian substrate with a quilted diamond lattice: the facet seams are where the pack's
++// contained heat shows through, so the linework is molten gold rather than printed gold.
++function obsidianBase(canvas: SkCanvas, w: number, h: number, s: number) {
+   canvas.drawRect(Skia.XYWHRect(0, 0, w, h), linearGradientPaint(0, 0, w, 0, [
+-    [0, "#020202"], [0.08, "#100e08"], [0.22, "#241c0e"], [0.38, "#3e2c10"],
+-    [0.5, "#2c220e"], [0.62, "#453214"], [0.78, "#1c1608"], [0.92, "#0e0a05"],
+-    [1, "#030202"],
++    [0, "#08080c"], [0.1, "#111118"], [0.26, "#1c1c24"], [0.4, "#28282f"],
++    [0.5, "#2e2e38"], [0.6, "#22222a"], [0.78, "#15151c"], [1, "#07070a"],
+   ]));
+   canvas.drawRect(Skia.XYWHRect(0, 0, w, h), linearGradientPaint(0, 0, 0, h, [
+-    [0, "rgba(230,196,120,0.10)"], [0.18, "rgba(0,0,0,0)"], [0.62, "rgba(0,0,0,0.18)"],
+-    [1, "rgba(0,0,0,0.62)"],
++    [0, "rgba(255,232,200,0.08)"], [0.2, "rgba(0,0,0,0)"], [0.6, "rgba(0,0,0,0.2)"],
++    [1, "rgba(0,0,0,0.66)"],
+   ]));
+-  hairlines(canvas, 0, 0, w, h, { step: 5 * s, angle: -0.38, alpha: 0.045 });
+-  hairlines(canvas, 0, 0, w, h, { step: 23 * s, angle: 1.32, alpha: 0.022 });
++
++  // warm bounce from the fire the pack sits in
++  ([[0, h], [w, h * 0.86], [w * 0.5, h * 1.04]] as const).forEach(([cx, cy], i) => {
++    const paint = Skia.Paint();
++    paint.setShader(Skia.Shader.MakeRadialGradient(
++      Skia.Point(cx, cy), w * (0.62 - i * 0.08),
++      [Skia.Color(`rgba(255,${118 + i * 20},40,${0.16 - i * 0.03})`), Skia.Color("rgba(0,0,0,0)")],
++      null, TileMode.Clamp
++    ));
++    canvas.drawRect(Skia.XYWHRect(0, 0, w, h), paint);
++  });
++
++  // quilted lattice
++  const step = 104 * s;
++  canvas.save();
++  for (let d = -h; d < w + h; d += step) {
++    ([1, -1] as const).forEach((sy) => {
++      const x0 = d, y0 = sy > 0 ? 0 : h, x1 = d + h, y1 = sy > 0 ? h : 0;
++      const groove = Skia.Path.Make();
++      groove.moveTo(x0, y0); groove.lineTo(x1, y1);
++      const groovePaint = strokePaint("rgba(0,0,0,0.55)", 3.4 * s);
++      groovePaint.setStrokeCap(StrokeCap.Round);
++      canvas.drawPath(groove, groovePaint);
++      const thread = Skia.Path.Make();
++      thread.moveTo(x0 + 1, y0); thread.lineTo(x1 + 1, y1);
++      const threadPaint = strokePaint("rgba(216,184,119,0.34)", 1.2 * s);
++      threadPaint.setStrokeCap(StrokeCap.Round);
++      canvas.drawPath(thread, threadPaint);
++
++      // molten segments: heat leaking along the seam, denser toward the foot
++      const segs = 30;
++      for (let seg = 0; seg < segs; seg++) {
++        const t0 = seg / segs, t1 = (seg + 0.7) / segs;
++        const n = noise1(d * 0.013 + seg * 1.7 + (sy > 0 ? 0 : 9.1));
++        const depth = 0.42 + 0.58 * t0;
++        const a = Math.max(0, n * 1.35) * depth;
++        if (a < 0.05) continue;
++        const ax0 = x0 + (x1 - x0) * t0, ay0 = y0 + (y1 - y0) * t0;
++        const ax1 = x0 + (x1 - x0) * t1, ay1 = y0 + (y1 - y0) * t1;
++        const seam = Skia.Path.Make();
++        seam.moveTo(ax0, ay0); seam.lineTo(ax1, ay1);
++        const emberPaint = glowStroke(
++          `rgba(255,${140 + Math.floor(n * 70)},${52 + Math.floor(n * 50)},${Math.min(1, a)})`,
++          (2.4 + a * 3.2) * s, (18 + a * 30) * s * 0.5
++        );
++        emberPaint.setStrokeCap(StrokeCap.Round);
++        canvas.drawPath(seam, emberPaint);
++        if (a > 0.5) {
++          const hotPaint = strokePaint(`rgba(255,246,222,${Math.min(0.95, (a - 0.5) * 1.8)})`, 1.2 * s);
++          hotPaint.setStrokeCap(StrokeCap.Round);
++          canvas.drawPath(seam, hotPaint);
++        }
++      }
++    });
++  }
++  canvas.restore();
++
++  hairlines(canvas, 0, 0, w, h, { step: 4 * s, angle: -0.36, alpha: 0.035 });
++
++  // warm sheen over the whole sheet: the foil is standing in firelight — see this file's header
++  // for why this is a single-circle approximation of the original's two-point gradient.
++  const sheenPaint = Skia.Paint();
++  sheenPaint.setShader(Skia.Shader.MakeRadialGradient(
++    Skia.Point(w * 0.5, h * 0.9), h * 0.85,
++    [Skia.Color("rgba(255,132,46,0.22)"), Skia.Color("rgba(255,120,40,0.08)"), Skia.Color("rgba(255,120,40,0)")],
++    [0, 0.5, 1], TileMode.Clamp
++  ));
++  canvas.drawRect(Skia.XYWHRect(0, 0, w, h), sheenPaint);
+ 
+   ([[0, 0], [w, 0], [0, h], [w, h]] as const).forEach(([cx, cy]) => {
+     const paint = Skia.Paint();
+     paint.setShader(Skia.Shader.MakeRadialGradient(
+-      Skia.Point(cx, cy), w * 0.52,
+-      [Skia.Color("rgba(0,0,0,0.55)"), Skia.Color("rgba(0,0,0,0)")],
++      Skia.Point(cx, cy), w * 0.46,
++      [Skia.Color("rgba(0,0,0,0.5)"), Skia.Color("rgba(0,0,0,0)")],
+       null, TileMode.Clamp
+     ));
+     canvas.drawRect(Skia.XYWHRect(0, 0, w, h), paint);
+   });
+ }
+ 
+-// Debossed architectural geometry: a tall pressed panel with chamfered corners and stepped
+-// inner returns. Structure, not ornament.
+-function debossedArchitecture(canvas: SkCanvas, x: number, y: number, w: number, h: number, s: number) {
+-  const chamfer = 46 * s;
++// Pressed panel with chamfered corners — structure for the lower half.
++function pressedPanel(canvas: SkCanvas, x: number, y: number, w: number, h: number, s: number) {
++  const k = 44 * s;
+   const path = (inset: number) => {
+     const a = x + inset, b = y + inset, c = x + w - inset, d = y + h - inset;
+-    const k = chamfer * (1 - inset / (w * 0.5));
++    const kk = k * (1 - inset / (w * 0.5));
+     const p = Skia.Path.Make();
+-    p.moveTo(a + k, b); p.lineTo(c - k, b); p.lineTo(c, b + k);
+-    p.lineTo(c, d - k); p.lineTo(c - k, d); p.lineTo(a + k, d);
+-    p.lineTo(a, d - k); p.lineTo(a, b + k); p.close();
++    p.moveTo(a + kk, b); p.lineTo(c - kk, b); p.lineTo(c, b + kk);
++    p.lineTo(c, d - kk); p.lineTo(c - kk, d); p.lineTo(a + kk, d);
++    p.lineTo(a, d - kk); p.lineTo(a, b + kk); p.close();
+     return p;
+   };
+-  canvas.drawPath(path(0), fillPaint("rgba(10,8,4,0.42)"));
+-  ([0, 14 * s, 30 * s] as const).forEach((inset, n) => {
+-    canvas.drawPath(path(inset), strokePaint(n === 0 ? "rgba(0,0,0,0.6)" : `rgba(201,162,74,${0.16 - n * 0.045})`, n === 0 ? 5 * s : 1.4 * s));
++  canvas.drawPath(path(0), fillPaint("rgba(0,0,0,0.5)"));
++  ([0, 13 * s, 28 * s] as const).forEach((inset, n) => {
++    canvas.drawPath(path(inset), strokePaint(n === 0 ? "rgba(0,0,0,0.66)" : `rgba(216,184,119,${0.15 - n * 0.042})`, n === 0 ? 5 * s : 1.3 * s));
+     if (n === 0) {
+       canvas.save();
+       canvas.translate(0, 3 * s);
+-      canvas.drawPath(path(inset), strokePaint("rgba(255,240,205,0.14)", 2 * s));
++      canvas.drawPath(path(inset), strokePaint("rgba(255,236,198,0.12)", 2 * s));
+       canvas.restore();
+     }
+   });
+ }
+ 
+-// Heavier crimp: taller band, finer knurl, deeper shadow where jaw meets body.
+ function crimpBand(canvas: SkCanvas, w: number, y0: number, y1: number, top: boolean, s: number) {
+   const h = y1 - y0;
+   canvas.drawRect(Skia.XYWHRect(0, y0, w, h), linearGradientPaint(0, y0, 0, y1, top
+-    ? [[0, "#d8b978"], [0.24, "#8a6a2e"], [0.6, "#4a3612"], [1, "#100c06"]]
+-    : [[0, "#100c06"], [0.4, "#4a3612"], [0.76, "#8a6a2e"], [1, "#d8b978"]]));
+-  const lightP = fillPaint("rgba(255,246,224,0.26)");
+-  const darkP = fillPaint("rgba(0,0,0,0.58)");
+-  for (let x = 0; x < w; x += 9 * s) {
++    ? [[0, "#3c3c46"], [0.26, "#1d1d25"], [0.62, "#0c0c12"], [1, "#030307"]]
++    : [[0, "#030307"], [0.4, "#0c0c12"], [0.76, "#1d1d25"], [1, "#3c3c46"]]));
++  const lightP = fillPaint("rgba(255,240,214,0.18)");
++  const darkP = fillPaint("rgba(0,0,0,0.62)");
++  for (let x = 0; x < w; x += 8 * s) {
+     canvas.drawRect(Skia.XYWHRect(x, y0, 3 * s, h), lightP);
+-    canvas.drawRect(Skia.XYWHRect(x + 4 * s, y0, 4 * s, h), darkP);
++    canvas.drawRect(Skia.XYWHRect(x + 4 * s, y0, 3 * s, h), darkP);
+   }
+-  const ty = top ? y1 - h * 0.32 : y0 + h * 0.22;
+-  canvas.drawRect(Skia.XYWHRect(0, ty, w, 2 * s), fillPaint("rgba(201,162,74,0.5)"));
+-  canvas.drawRect(Skia.XYWHRect(0, top ? y0 : y1 - 3 * s, w, 3 * s), fillPaint("rgba(255,255,255,0.44)"));
+-  canvas.drawRect(Skia.XYWHRect(0, top ? y1 - 7 * s : y0, w, 7 * s), fillPaint("rgba(0,0,0,0.72)"));
++  const ty = top ? y1 - h * 0.3 : y0 + h * 0.2;
++  canvas.drawRect(Skia.XYWHRect(0, ty, w, 2 * s), fillPaint("rgba(216,184,119,0.42)"));
++  canvas.drawRect(Skia.XYWHRect(0, top ? y0 : y1 - 3 * s, w, 3 * s), fillPaint("rgba(255,255,255,0.3)"));
++  canvas.drawRect(Skia.XYWHRect(0, top ? y1 - 7 * s : y0, w, 7 * s), fillPaint("rgba(0,0,0,0.78)"));
+ }
+ 
+-// The tear channel. No printed rainbow strip — a debossed groove between two bronze threads,
+-// with corner ticks. The rip itself supplies the drama.
++// Tear channel with an ember thread: a printed molten line inside the groove, so the seam
++// already suggests what is sealed inside.
+ function tearChannel(canvas: SkCanvas, w: number, seam: number, s: number) {
+   const y = seam - 16 * s;
+-  canvas.drawRect(Skia.XYWHRect(0, y - 26 * s, w, 44 * s), linearGradientPaint(0, y - 26 * s, 0, y + 18 * s, [
+-    [0, "rgba(6,2,14,0)"], [0.4, "rgba(6,2,14,0.55)"], [1, "rgba(6,2,14,0)"],
++  canvas.drawRect(Skia.XYWHRect(0, y - 30 * s, w, 52 * s), linearGradientPaint(0, y - 30 * s, 0, y + 22 * s, [
++    [0, "rgba(0,0,0,0)"], [0.42, "rgba(0,0,0,0.62)"], [1, "rgba(0,0,0,0)"],
+   ]));
+-  grooveLine(canvas, 30 * s, y, w - 30 * s, y, { w: 7 * s, dark: "rgba(0,0,0,0.72)", lit: "rgba(255,240,205,0.20)" });
+-
+-  const dash = strokePaint("rgba(201,162,74,0.42)", 2 * s);
+-  dash.setPathEffect(Skia.PathEffect.MakeDash([5 * s, 9 * s], 0));
+-  const dashPath = Skia.Path.Make();
+-  dashPath.moveTo(38 * s, y); dashPath.lineTo(w - 38 * s, y);
+-  canvas.drawPath(dashPath, dash);
+-
++  grooveLine(canvas, 30 * s, y, w - 30 * s, y, { w: 8 * s, dark: "rgba(0,0,0,0.8)", lit: "rgba(255,232,190,0.16)" });
++
++  const emberPaint = fillPaint("#000000");
++  for (let x = 44 * s; x < w - 44 * s; x += 6 * s) {
++    const n = noise1(x * 0.06 / s);
++    const a = Math.max(0, 0.16 + n * 0.5);
++    emberPaint.setColor(Skia.Color(`rgba(255,${120 + Math.floor(n * 60)},40,${Math.min(0.72, a)})`));
++    canvas.drawRect(Skia.XYWHRect(x, y - 1 * s + n * 1.4 * s, 4 * s, 2 * s), emberPaint);
++  }
+   const hairA = Skia.Path.Make();
+-  hairA.moveTo(30 * s, y - 11 * s); hairA.lineTo(w - 30 * s, y - 11 * s);
+-  canvas.drawPath(hairA, strokePaint("rgba(201,162,74,0.28)", 1 * s));
++  hairA.moveTo(30 * s, y - 12 * s); hairA.lineTo(w - 30 * s, y - 12 * s);
++  canvas.drawPath(hairA, strokePaint("rgba(216,184,119,0.26)", 1 * s));
+   const hairB = Skia.Path.Make();
+-  hairB.moveTo(30 * s, y + 11 * s); hairB.lineTo(w - 30 * s, y + 11 * s);
+-  canvas.drawPath(hairB, strokePaint("rgba(201,162,74,0.28)", 1 * s));
++  hairB.moveTo(30 * s, y + 12 * s); hairB.lineTo(w - 30 * s, y + 12 * s);
++  canvas.drawPath(hairB, strokePaint("rgba(216,184,119,0.26)", 1 * s));
+ 
+   ([[44 * s, false], [w - 44 * s, true]] as const).forEach(([x, right]) => {
+-    drawTrackedText(canvas, "TEAR", x, y - 22 * s, {
++    drawTrackedText(canvas, "TEAR", x, y - 24 * s, {
+       size: 12 * s, bold: true, mono: true, letterSpacing: 4 * s,
+-      fill: "rgba(201,162,74,0.66)", align: right ? "right" : "left",
++      fill: "rgba(216,184,119,0.6)", align: right ? "right" : "left",
+     });
+     const arrow = Skia.Path.Make();
+     arrow.moveTo(right ? x + 2 * s : x - 2 * s, y - 6 * s);
+     arrow.lineTo(right ? x - 12 * s : x + 12 * s, y);
+     arrow.lineTo(right ? x + 2 * s : x - 2 * s, y + 6 * s);
+-    canvas.drawPath(arrow, strokePaint("rgba(201,162,74,0.5)", 2 * s));
++    canvas.drawPath(arrow, strokePaint("rgba(216,184,119,0.46)", 2 * s));
+   });
+ }
+ 
+-// Embossed GrailHaus medallion: vault-door rings, chamfered octagon frame, bevelled G. Built
+-// from bed/rim/face passes so it reads as struck metal.
+-function medallion(canvas: SkCanvas, cx: number, cy: number, R: number, logo: SkImage | null) {
++// Faceted apex mark: an eight-point diamond set in a pressed well, gold-edged.
++function apexMark(canvas: SkCanvas, cx: number, cy: number, R: number, logo: SkImage | null) {
+   canvas.save();
+   canvas.translate(cx, cy);
+ 
++  // see this file's header re: two-point-gradient simplification
+   const well = Skia.Paint();
+   well.setShader(Skia.Shader.MakeRadialGradient(
+-    Skia.Point(0, -R * 0.2), R * 1.12,
+-    [Skia.Color("rgba(58,42,16,0.85)"), Skia.Color("rgba(20,14,6,0.9)"), Skia.Color("rgba(6,4,2,0.95)")],
+-    [0, 0.62, 1], TileMode.Clamp
++    Skia.Point(0, 0), R * 1.14,
++    [Skia.Color("rgba(38,32,26,0.9)"), Skia.Color("rgba(10,9,12,0.94)"), Skia.Color("rgba(2,2,5,0.96)")],
++    [0, 0.6, 1], TileMode.Clamp
+   ));
+-  canvas.drawCircle(0, 0, R * 1.12, well);
++  canvas.drawCircle(0, 0, R * 1.14, well);
+ 
+-  ([1.0, 0.86, 0.71] as const).forEach((k, i) => {
+-    canvas.drawCircle(0, 0, R * k, strokePaint("rgba(0,0,0,0.6)", 9 - i * 2));
++  ([1.0, 0.87, 0.73] as const).forEach((k, i) => {
++    canvas.drawCircle(0, 0, R * k, strokePaint("rgba(0,0,0,0.66)", 8 - i * 2));
+     canvas.drawArc(
+       Skia.XYWHRect(-R * k, -R * k, R * k * 2, R * k * 2),
+-      1.06 * 180, 0.88 * 180, false,
+-      strokePaint(`rgba(201,162,74,${0.5 - i * 0.1})`, 3 - i * 0.6)
++      1.05 * 180, 0.9 * 180, false,
++      strokePaint(`rgba(216,184,119,${0.46 - i * 0.1})`, 3 - i * 0.6)
+     );
+   });
+-  for (let i = 0; i < 8; i++) {
+-    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+-    const x = Math.cos(a) * R * 0.93, y = Math.sin(a) * R * 0.93;
+-    canvas.drawCircle(x, y, R * 0.032, fillPaint("rgba(0,0,0,0.7)"));
+-    const boltPaint = Skia.Paint();
+-    boltPaint.setShader(bronzeShader(y - R * 0.03, y + R * 0.03));
+-    canvas.drawCircle(x - R * 0.008, y - R * 0.01, R * 0.024, boltPaint);
+-  }
+ 
+-  const oct = (rad: number) => {
++  const dia = (rad: number) => {
+     const p = Skia.Path.Make();
+-    for (let i = 0; i < 8; i++) {
+-      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+-      const x = Math.cos(a) * rad, y = Math.sin(a) * rad;
+-      if (i === 0) p.moveTo(x, y); else p.lineTo(x, y);
+-    }
++    p.moveTo(0, -rad); p.lineTo(rad * 0.62, 0);
++    p.lineTo(0, rad); p.lineTo(-rad * 0.62, 0);
+     p.close();
+     return p;
+   };
+-  canvas.drawPath(oct(R * 0.66), fillPaint("rgba(12,9,4,0.72)"));
+-  canvas.drawPath(oct(R * 0.66), strokePaint("rgba(0,0,0,0.75)", 8));
+-  const octStroke = Skia.Paint();
+-  octStroke.setStyle(PaintStyle.Stroke);
+-  octStroke.setStrokeWidth(3.4);
+-  octStroke.setAntiAlias(true);
+-  octStroke.setShader(bronzeShader(-R * 0.66, R * 0.66));
+-  canvas.drawPath(oct(R * 0.66), octStroke);
+-  canvas.drawPath(oct(R * 0.56), strokePaint("rgba(201,162,74,0.24)", 1.2));
+-
+-  canvas.save();
+-  canvas.clipPath(oct(R * 0.54), ClipOp.Intersect, true);
+-  canvas.drawRect(Skia.XYWHRect(-R, -R, R * 2, R * 2), linearGradientPaint(-R * 0.5, -R * 0.5, R * 0.5, R * 0.5, [
+-    [0, "#2e2210"], [0.5, "#6b4e1e"], [1, "#160f06"],
+-  ]));
+-  hairlines(canvas, -R, -R, R * 2, R * 2, { step: 7, angle: 0.6, alpha: 0.07 });
+-  canvas.restore();
++  canvas.drawPath(dia(R * 0.68), fillPaint("rgba(6,6,11,0.8)"));
++  canvas.drawPath(dia(R * 0.68), strokePaint("rgba(0,0,0,0.8)", 7));
++  const diaGold = Skia.Paint();
++  diaGold.setStyle(PaintStyle.Stroke);
++  diaGold.setStrokeWidth(3.2);
++  diaGold.setAntiAlias(true);
++  diaGold.setShader(goldShader(-R * 0.68, R * 0.68));
++  canvas.drawPath(dia(R * 0.68), diaGold);
++  canvas.drawPath(dia(R * 0.5), strokePaint("rgba(216,184,119,0.3)", 1.2));
++
++  const facetA = Skia.Path.Make();
++  facetA.moveTo(0, -R * 0.68); facetA.lineTo(0, R * 0.68);
++  canvas.drawPath(facetA, strokePaint("rgba(216,184,119,0.2)", 1));
++  const facetB = Skia.Path.Make();
++  facetB.moveTo(-R * 0.42, 0); facetB.lineTo(R * 0.42, 0);
++  canvas.drawPath(facetB, strokePaint("rgba(216,184,119,0.2)", 1));
+ 
+   if (logo) {
+-    const sSize = R * 1.0;
++    const sSize = R * 0.86;
+     canvas.save();
+-    canvas.clipPath(oct(R * 0.54), ClipOp.Intersect, true);
++    canvas.clipPath(dia(R * 0.66), ClipOp.Intersect, true);
+     const imgPaint = Skia.Paint();
+     imgPaint.setAntiAlias(true);
+-    imgPaint.setAlphaf(0.96);
++    imgPaint.setAlphaf(0.94);
+     canvas.drawImageRect(
+       logo,
+       Skia.XYWHRect(0, 0, logo.width(), logo.height()),
+@@ -253,18 +327,17 @@ function medallion(canvas: SkCanvas, cx: number, cy: number, R: number, logo: Sk
+     );
+     canvas.restore();
+   } else {
+-    const gShader = bronzeShader(-R * 0.6, R * 0.3);
+-    embossText(canvas, "G", 0, R * 0.29, {
+-      size: R * 0.92, bold: true, shader: gShader,
+-      depth: R * 0.022, bed: "rgba(0,0,0,0.8)", rim: "rgba(255,246,220,0.34)",
+-    });
++    canvas.drawPath(dia(R * 0.3), (() => {
++      const p = Skia.Paint();
++      p.setShader(goldShader(-R * 0.3, R * 0.3));
++      return p;
++    })());
+   }
+   canvas.restore();
+ }
+ 
+-// Bronze bevelled plate carrying the edition name.
+ function editionPlate(canvas: SkCanvas, cx: number, cy: number, w: number, h: number, label: string) {
+-  const x = cx - w / 2, y = cy - h / 2, k = 22;
++  const x = cx - w / 2, y = cy - h / 2, k = 20;
+   const shape = (inset: number) => {
+     const a = x + inset, b = y + inset, c = x + w - inset, d = y + h - inset;
+     const p = Skia.Path.Make();
+@@ -273,29 +346,29 @@ function editionPlate(canvas: SkCanvas, cx: number, cy: number, w: number, h: nu
+     p.lineTo(a, d - k); p.lineTo(a, b + k); p.close();
+     return p;
+   };
+-  canvas.drawPath(shape(-6), fillPaint("rgba(0,0,0,0.55)"));
++  canvas.drawPath(shape(-6), fillPaint("rgba(0,0,0,0.62)"));
+   canvas.drawPath(shape(0), linearGradientPaint(0, y, 0, y + h, [
+-    [0, "#171008"], [0.5, "#0d0904"], [1, "#1a1208"],
++    [0, "#15151c"], [0.5, "#08080d"], [1, "#131319"],
+   ]));
+   canvas.save();
+   canvas.clipPath(shape(0), ClipOp.Intersect, true);
+-  hairlines(canvas, x, y, w, h, { step: 5, angle: -0.3, alpha: 0.05 });
++  hairlines(canvas, x, y, w, h, { step: 5, angle: -0.28, alpha: 0.05 });
+   canvas.restore();
+   const strokeP = Skia.Paint();
+   strokeP.setStyle(PaintStyle.Stroke);
+   strokeP.setAntiAlias(true);
+-  strokeP.setStrokeWidth(3.2);
+-  strokeP.setShader(bronzeShader(y, y + h));
++  strokeP.setStrokeWidth(3);
++  strokeP.setShader(goldShader(y, y + h));
+   canvas.drawPath(shape(0), strokeP);
+-  canvas.drawPath(shape(9), strokePaint("rgba(201,162,74,0.22)", 1.2));
++  canvas.drawPath(shape(9), strokePaint("rgba(216,184,119,0.2)", 1.1));
+ 
+   embossText(canvas, label, cx, cy + h * 0.19, {
+-    size: h * 0.5, bold: true, letterSpacing: 5, shader: bronzeShader(cy - h * 0.32, cy + h * 0.24),
+-    depth: 2.4, bed: "rgba(0,0,0,0.85)", rim: "rgba(255,246,220,0.22)",
++    size: h * 0.36, bold: true, letterSpacing: 9, shader: goldShader(cy - h * 0.3, cy + h * 0.24),
++    depth: 2.4, bed: "rgba(0,0,0,0.88)", rim: "rgba(255,238,206,0.22)",
+   });
+ }
+ 
+-export interface VaultFaceInput {
++export interface BlackLabelFaceInput {
+   width: number;
+   height: number;
+   seamFrac: number;
+@@ -303,76 +376,75 @@ export interface VaultFaceInput {
+   logo?: SkImage | null;
+ }
+ 
+-export function drawFront(input: VaultFaceInput): PixelImage {
++export function drawFront(input: BlackLabelFaceInput): PixelImage {
+   const { width: W, height: H, seamFrac, flapFrac, logo } = input;
+   const s = W / DESIGN_W;
+   const surf = makeSurface(W, H);
+   const { canvas } = surf;
+ 
+   canvas.save();
+-  canvas.clipPath(silhouettePath(W, H, 34 * s), ClipOp.Intersect, true);
+-  satinBase(canvas, W, H, s);
++  canvas.clipPath(silhouettePath(W, H, 32 * s), ClipOp.Intersect, true);
++  obsidianBase(canvas, W, H, s);
+ 
+   const flap = H * flapFrac, seam = H * seamFrac;
+-  debossedArchitecture(canvas, 40 * s, seam + 26 * s, W - 80 * s, H - seam - flap - 62 * s, s);
++  pressedPanel(canvas, 38 * s, seam + 26 * s, W - 76 * s, H - seam - flap - 62 * s, s);
+ 
+-  embossText(canvas, "GRAILHAUS", W / 2, 128 * s, {
+-    size: 56 * s, bold: true, letterSpacing: 7 * s, shader: bronzeShader(86 * s, 134 * s),
+-    depth: 2.6 * s, bed: "rgba(0,0,0,0.8)", rim: "rgba(255,246,220,0.26)",
++  embossText(canvas, "GRAILHAUS", W / 2, 132 * s, {
++    size: 52 * s, bold: true, letterSpacing: 9 * s, shader: goldShader(92 * s, 138 * s),
++    depth: 2.4 * s, bed: "rgba(0,0,0,0.85)", rim: "rgba(255,238,206,0.22)",
+   });
+-  drawTrackedText(canvas, "COLLECTOR CARD GAME", W / 2, 158 * s, {
+-    size: 14 * s, bold: true, mono: true, letterSpacing: 7 * s, fill: "rgba(244,236,224,0.7)",
++  drawTrackedText(canvas, "TRADING CARDS", W / 2, 162 * s, {
++    size: 13 * s, bold: true, mono: true, letterSpacing: 8 * s, fill: "rgba(242,236,226,0.6)",
+   });
+   const ruleA = Skia.Path.Make();
+-  ruleA.moveTo(W / 2 - 150 * s, 182 * s); ruleA.lineTo(W / 2 - 56 * s, 182 * s);
+-  canvas.drawPath(ruleA, strokePaint("rgba(201,162,74,0.38)", 1 * s));
++  ruleA.moveTo(W / 2 - 156 * s, 188 * s); ruleA.lineTo(W / 2 - 58 * s, 188 * s);
++  canvas.drawPath(ruleA, strokePaint("rgba(216,184,119,0.32)", 1 * s));
+   const ruleB = Skia.Path.Make();
+-  ruleB.moveTo(W / 2 + 56 * s, 182 * s); ruleB.lineTo(W / 2 + 150 * s, 182 * s);
+-  canvas.drawPath(ruleB, strokePaint("rgba(201,162,74,0.38)", 1 * s));
+-  drawTrackedText(canvas, "SERIES I", W / 2, 188 * s, {
+-    size: 14 * s, bold: true, mono: true, letterSpacing: 6 * s, fill: "#c9a24a",
++  ruleB.moveTo(W / 2 + 58 * s, 188 * s); ruleB.lineTo(W / 2 + 156 * s, 188 * s);
++  canvas.drawPath(ruleB, strokePaint("rgba(216,184,119,0.32)", 1 * s));
++  drawTrackedText(canvas, "SERIES I", W / 2, 194 * s, {
++    size: 13 * s, bold: true, mono: true, letterSpacing: 6 * s, fill: GOLD,
+   });
+ 
+-  const bw = 96 * s, bh = 38 * s, bx = W - 34 * s - bw, by = 84 * s;
+-  const badge = roundRectPath(bx, by, bw, bh, 6 * s);
+-  canvas.drawPath(badge, fillPaint("rgba(10,8,4,0.9)"));
++  const bw = 92 * s, bh = 38 * s, bx = W - 34 * s - bw, by = 86 * s;
++  const badge = roundRectPath(bx, by, bw, bh, 5 * s);
++  canvas.drawPath(badge, fillPaint("rgba(4,4,9,0.92)"));
+   const badgeStroke = Skia.Paint();
+   badgeStroke.setStyle(PaintStyle.Stroke); badgeStroke.setAntiAlias(true); badgeStroke.setStrokeWidth(2 * s);
+-  badgeStroke.setShader(bronzeShader(by, by + bh));
++  badgeStroke.setShader(goldShader(by, by + bh));
+   canvas.drawPath(badge, badgeStroke);
+-  canvas.drawPath(roundRectPath(bx + 5 * s, by + 5 * s, bw - 10 * s, bh - 10 * s, 4 * s), strokePaint("rgba(201,162,74,0.22)", 1 * s));
+-  drawTrackedText(canvas, "S·1a", bx + bw / 2, by + 27 * s, {
+-    size: 22 * s, bold: true, letterSpacing: 1 * s, shader: bronzeShader(by + 6 * s, by + 34 * s),
++  canvas.drawPath(roundRectPath(bx + 5 * s, by + 5 * s, bw - 10 * s, bh - 10 * s, 3 * s), strokePaint("rgba(216,184,119,0.2)", 1 * s));
++  drawTrackedText(canvas, "A·1", bx + bw / 2, by + 27 * s, {
++    size: 21 * s, bold: true, letterSpacing: 1 * s, shader: goldShader(by + 6 * s, by + 34 * s),
+   });
+ 
+-  ["MORE", "THAN", "CARDS"].forEach((l, i) => drawTrackedText(canvas, l, 30 * s, (232 + i * 20) * s, {
+-    size: 11 * s, bold: true, mono: true, letterSpacing: 3 * s, fill: "rgba(201,162,74,0.46)", align: "left",
++  ["THE", "RAREST", "STORIES"].forEach((l, i) => drawTrackedText(canvas, l, 30 * s, (238 + i * 20) * s, {
++    size: 11 * s, bold: true, mono: true, letterSpacing: 3 * s, fill: "rgba(216,184,119,0.42)", align: "left",
+   }));
+-  ["A HIGHER", "REALM", "AWAITS"].forEach((l, i) => drawTrackedText(canvas, l, W - 30 * s, (232 + i * 20) * s, {
+-    size: 11 * s, bold: true, mono: true, letterSpacing: 3 * s, fill: "rgba(201,162,74,0.46)", align: "right",
++  ["LIVE", "HERE", "—"].forEach((l, i) => drawTrackedText(canvas, l, W - 30 * s, (238 + i * 20) * s, {
++    size: 11 * s, bold: true, mono: true, letterSpacing: 3 * s, fill: "rgba(216,184,119,0.42)", align: "right",
+   }));
+ 
+-  medallion(canvas, W / 2, seam + 300 * s, 236 * s, logo ?? null);
+-  editionPlate(canvas, W / 2, seam + 596 * s, 500 * s, 92 * s, "BLACK LABEL");
+-  drawTrackedText(canvas, "HIGH-STAKES COLLECTOR PACK", W / 2, seam + 672 * s, {
+-    size: 15 * s, bold: true, mono: true, letterSpacing: 7 * s, fill: "rgba(244,236,224,0.56)",
++  apexMark(canvas, W / 2, seam + 292 * s, 224 * s, logo ?? null);
++  editionPlate(canvas, W / 2, seam + 588 * s, 520 * s, 96 * s, "BLACK LABEL");
++  drawTrackedText(canvas, "COLLECTIBLE CARDS", W / 2, seam + 664 * s, {
++    size: 14 * s, bold: true, mono: true, letterSpacing: 8 * s, fill: "rgba(242,236,226,0.5)",
+   });
+ 
+-  const ly = seam + 716 * s;
+-  drawTrackedText(canvas, "CORE", W / 2 - 150 * s, ly, {
+-    size: 13 * s, bold: true, mono: true, letterSpacing: 4 * s, fill: "rgba(201,162,74,0.5)",
+-  });
+-  drawTrackedText(canvas, "PRIME", W / 2, ly, {
+-    size: 13 * s, bold: true, mono: true, letterSpacing: 4 * s, fill: "rgba(201,162,74,0.66)",
+-  });
+-  drawTrackedText(canvas, "GRAIL", W / 2 + 150 * s, ly, {
+-    size: 13 * s, bold: true, mono: true, letterSpacing: 4 * s, fill: "#c9a24a",
++  const ly = seam + 712 * s;
++  ([["CORE", 0.42, -150], ["PRIME", 0.58, 0], ["GRAIL", 0.95, 150]] as const).forEach(([l, a, dx]) => {
++    drawTrackedText(canvas, l, W / 2 + dx * s, ly, {
++      size: 13 * s, bold: true, mono: true, letterSpacing: 4 * s, fill: `rgba(216,184,119,${a})`,
++    });
+   });
+-  const tickPaint = fillPaint("rgba(201,162,74,0.3)");
++  const tickPaint = fillPaint("rgba(216,184,119,0.24)");
+   ([-75, 75] as const).forEach((d) => canvas.drawRect(Skia.XYWHRect(W / 2 + d * s, ly - 10 * s, 1 * s, 12 * s), tickPaint));
+ 
+-  drawTrackedText(canvas, "7 CARDS INSIDE", W / 2, H - 118 * s, {
+-    size: 17 * s, bold: true, mono: true, letterSpacing: 8 * s, shader: bronzeShader(H - 138 * s, H - 110 * s),
++  drawTrackedText(canvas, "LEGENDS ARE NOT FOUND", W / 2, H - 146 * s, {
++    size: 14 * s, bold: true, mono: true, letterSpacing: 6 * s, fill: "rgba(242,236,226,0.42)",
++  });
++  drawTrackedText(canvas, "THEY ARE REVEALED", W / 2, H - 120 * s, {
++    size: 14 * s, bold: true, mono: true, letterSpacing: 6 * s, shader: goldShader(H - 138 * s, H - 112 * s),
+   });
+ 
+   crimpBand(canvas, W, 0, flap, true, s);
+@@ -382,73 +454,66 @@ export function drawFront(input: VaultFaceInput): PixelImage {
+   return { data: surf.toRGBA(), width: W, height: H };
+ }
+ 
+-export function drawBack(input: VaultFaceInput): PixelImage {
++export function drawBack(input: BlackLabelFaceInput): PixelImage {
+   const { width: W, height: H, seamFrac, flapFrac } = input;
+   const s = W / DESIGN_W;
+   const surf = makeSurface(W, H);
+   const { canvas } = surf;
+ 
+   canvas.save();
+-  canvas.clipPath(silhouettePath(W, H, 34 * s), ClipOp.Intersect, true);
+-  satinBase(canvas, W, H, s);
++  canvas.clipPath(silhouettePath(W, H, 32 * s), ClipOp.Intersect, true);
++  obsidianBase(canvas, W, H, s);
+   const flap = H * flapFrac, seam = H * seamFrac;
+ 
+-  guilloche(canvas, W / 2, H * 0.44, { r: 250 * s, lobes: 13, lines: 26, ripple: 0.14, stroke: "rgba(201,162,74,0.09)" });
+-  guilloche(canvas, W / 2, H * 0.44, { r: 132 * s, lobes: 7, lines: 16, turns: 3, ripple: 0.2, stroke: "rgba(201,162,74,0.1)" });
++  guilloche(canvas, W / 2, H * 0.44, { r: 248 * s, lobes: 13, lines: 24, ripple: 0.14, stroke: "rgba(216,184,119,0.07)" });
++  guilloche(canvas, W / 2, H * 0.44, { r: 128 * s, lobes: 7, lines: 15, turns: 3, ripple: 0.2, stroke: "rgba(255,120,40,0.06)" });
+ 
+-  drawTrackedText(canvas, "GRAILHAUS · SERIES I", W / 2, 132 * s, {
+-    size: 22 * s, bold: true, mono: true, letterSpacing: 9 * s, shader: bronzeShader(112 * s, 138 * s),
++  drawTrackedText(canvas, "GRAILHAUS · BLACK LABEL", W / 2, 136 * s, {
++    size: 21 * s, bold: true, mono: true, letterSpacing: 10 * s, shader: goldShader(116 * s, 142 * s),
+   });
+-  drawTrackedText(canvas, "CERTIFIED COLLECTOR PACKAGING", W / 2, 164 * s, {
+-    size: 12 * s, bold: true, mono: true, letterSpacing: 5 * s, fill: "rgba(244,236,224,0.44)",
++  drawTrackedText(canvas, "CERTIFIED COLLECTOR PACKAGING", W / 2, 168 * s, {
++    size: 12 * s, bold: true, mono: true, letterSpacing: 5 * s, fill: "rgba(242,236,226,0.4)",
+   });
+ 
+   const ax = 56 * s, ay = seam + 40 * s, aw = W - 112 * s, ah = H - seam - flap - 96 * s;
+-  canvas.drawPath(roundRectPath(ax, ay, aw, ah, 10 * s), strokePaint("rgba(0,0,0,0.6)", 5 * s));
+-  canvas.drawPath(roundRectPath(ax, ay, aw, ah, 10 * s), strokePaint("rgba(201,162,74,0.3)", 1.4 * s));
+-  canvas.drawPath(roundRectPath(ax + 10 * s, ay + 10 * s, aw - 20 * s, ah - 20 * s, 6 * s), strokePaint("rgba(201,162,74,0.14)", 1 * s));
+-
+-  const gridPaint = strokePaint("rgba(201,162,74,0.04)", 1 * s);
+-  for (let i = 1; i < 6; i++) {
+-    const y = ay + (ah * i) / 6;
+-    const gp = Skia.Path.Make();
+-    gp.moveTo(ax + 18 * s, y); gp.lineTo(ax + aw - 18 * s, y);
+-    canvas.drawPath(gp, gridPaint);
+-  }
++  canvas.drawPath(roundRectPath(ax, ay, aw, ah, 8 * s), strokePaint("rgba(0,0,0,0.66)", 5 * s));
++  canvas.drawPath(roundRectPath(ax, ay, aw, ah, 8 * s), strokePaint("rgba(216,184,119,0.26)", 1.3 * s));
++  canvas.drawPath(roundRectPath(ax + 10 * s, ay + 10 * s, aw - 20 * s, ah - 20 * s, 5 * s), strokePaint("rgba(216,184,119,0.12)", 1 * s));
+ 
+-  editionPlate(canvas, W / 2, ay + 108 * s, 420 * s, 74 * s, "BLACK LABEL");
+-  drawTrackedText(canvas, "TIER III · HIGH-STAKES", W / 2, ay + 170 * s, {
+-    size: 13 * s, bold: true, mono: true, letterSpacing: 6 * s, fill: "rgba(201,162,74,0.52)",
++  editionPlate(canvas, W / 2, ay + 108 * s, 430 * s, 76 * s, "BLACK LABEL");
++  drawTrackedText(canvas, "TIER III · THE HIGHEST TIER", W / 2, ay + 172 * s, {
++    size: 13 * s, bold: true, mono: true, letterSpacing: 6 * s, fill: "rgba(216,184,119,0.48)",
+   });
+ 
+-  const cy0 = ay + 226 * s;
++  const cy0 = ay + 228 * s;
+   const rows: [string, string][] = [
+-    ["CONTENTS", "7 COLLECTOR CARDS"],
+-    ["GUARANTEE", "2 PRIME OR ABOVE"],
++    ["CONTENTS", "6 COLLECTOR CARDS"],
++    ["GUARANTEE", "1 PRIME OR ABOVE"],
++    ["GRAIL ODDS", "1 IN 25 PACKS"],
+     ["SEALED", "AT SOURCE · GH ATELIER"],
+-    ["AUTH", "BL-S1C-00250"],
++    ["AUTH", "BL-S1A-00317"],
+   ];
+   rows.forEach(([k, v], i) => {
+     const y = cy0 + i * 40 * s;
+     drawTrackedText(canvas, k, ax + 40 * s, y, {
+-      size: 12 * s, bold: true, mono: true, letterSpacing: 4 * s, fill: "rgba(201,162,74,0.5)", align: "left",
++      size: 12 * s, bold: true, mono: true, letterSpacing: 4 * s, fill: "rgba(216,184,119,0.46)", align: "left",
+     });
+     drawTrackedText(canvas, v, ax + aw - 40 * s, y, {
+-      size: 13 * s, bold: true, mono: true, letterSpacing: 2 * s, fill: "rgba(244,236,224,0.72)", align: "right",
++      size: 13 * s, bold: true, mono: true, letterSpacing: 2 * s, fill: "rgba(242,236,226,0.68)", align: "right",
+     });
+     const sep = Skia.Path.Make();
+     sep.moveTo(ax + 40 * s, y + 12 * s); sep.lineTo(ax + aw - 40 * s, y + 12 * s);
+-    canvas.drawPath(sep, strokePaint("rgba(201,162,74,0.1)", 1 * s));
++    canvas.drawPath(sep, strokePaint("rgba(216,184,119,0.09)", 1 * s));
+   });
+ 
+-  microBlock(canvas, ax + 40 * s, cy0 + 176 * s, aw - 80 * s, 7, { alpha: 0.2, rowH: 7 * s });
+-  drawTrackedText(canvas, "COLLECTION · THE COLLECTOR'S VAULT", W / 2, cy0 + 258 * s, {
+-    size: 13 * s, bold: true, mono: true, letterSpacing: 5 * s, fill: "rgba(201,162,74,0.55)",
++  microBlock(canvas, ax + 40 * s, cy0 + 216 * s, aw - 80 * s, 7, { alpha: 0.16, fill: GOLD, rowH: 7 * s });
++  drawTrackedText(canvas, "COLLECTION · THE ELEMENTAL SERIES", W / 2, cy0 + 296 * s, {
++    size: 13 * s, bold: true, mono: true, letterSpacing: 5 * s, fill: "rgba(216,184,119,0.5)",
+   });
+ 
+-  barcode(canvas, W / 2 - 96 * s, H - 176 * s, 192 * s, 54 * s, { bg: "rgba(244,236,224,0.86)", ink: "#0a0805", seed: 41 });
+-  drawTrackedText(canvas, "BL · S1C · 007", W / 2, H - 104 * s, {
+-    size: 12 * s, bold: true, mono: true, letterSpacing: 5 * s, fill: "rgba(244,236,224,0.4)",
++  barcode(canvas, W / 2 - 96 * s, H - 178 * s, 192 * s, 52 * s, { bg: "rgba(242,236,226,0.84)", ink: INK, seed: 53 });
++  drawTrackedText(canvas, "BL · S1A · 006", W / 2, H - 106 * s, {
++    size: 12 * s, bold: true, mono: true, letterSpacing: 5 * s, fill: "rgba(242,236,226,0.36)",
+   });
+ 
+   crimpBand(canvas, W, 0, flap, true, s);
+@@ -458,31 +523,30 @@ export function drawBack(input: VaultFaceInput): PixelImage {
+   return { data: surf.toRGBA(), width: W, height: H };
+ }
+ 
+-// The inner liner: brushed bronze-gold metal on a dark web. It is the material itself that reads
+-// premium, so this is a straight anisotropic metal sheet.
++// Inner liner: dark graphite web with a molten copper sheen, so the interior catches the fire
++// rather than gold-plating it.
+ export function drawLiner(width = 256, height = 256): PixelImage {
+   const surf = makeSurface(width, height);
+   const { canvas } = surf;
+   canvas.drawRect(Skia.XYWHRect(0, 0, width, height), linearGradientPaint(0, 0, width, 0, [
+-    [0, "#14100a"], [0.14, "#4a3d28"], [0.3, "#a08a5c"], [0.42, "#e2cfa4"],
+-    [0.5, "#f6ead0"], [0.58, "#cbb37e"], [0.72, "#7a683f"], [0.88, "#2e2618"],
+-    [1, "#0c0a06"],
++    [0, "#0a0808"], [0.14, "#2a1810"], [0.3, "#6e3618"], [0.42, "#b96a2c"],
++    [0.5, "#e8a45c"], [0.58, "#a45a26"], [0.72, "#572b14"], [0.88, "#1d1310"],
++    [1, "#08070a"],
+   ]));
+   hairlines(canvas, 0, 0, width, height, { step: 3, angle: Math.PI / 2, alpha: 0.1 });
+   canvas.drawRect(Skia.XYWHRect(0, 0, width, height), linearGradientPaint(0, 0, 0, height, [
+-    [0, "rgba(255,255,255,0.14)"], [0.4, "rgba(0,0,0,0.1)"], [1, "rgba(0,0,0,0.7)"],
++    [0, "rgba(255,214,160,0.16)"], [0.4, "rgba(0,0,0,0.12)"], [1, "rgba(0,0,0,0.76)"],
+   ]));
+   return { data: surf.toRGBA(), width, height };
+ }
+ 
+-// Controlled specular sweep for the seam while the user pulls. Bronze-gold, not rainbow: the
+-// metal responds, it does not glow.
++// Seam sweep: molten, not rainbow.
+ export function drawShine(width = 512, height = 32): PixelImage {
+   const surf = makeSurface(width, height);
+   const { canvas } = surf;
+   canvas.drawRect(Skia.XYWHRect(0, 0, width, height), linearGradientPaint(0, 0, width, 0, [
+-    [0, "rgba(0,0,0,0)"], [0.36, "rgba(90,64,20,0.22)"], [0.46, "#d9c08a"],
+-    [0.5, "#fff6e0"], [0.54, "#cfae72"], [0.64, "rgba(90,64,20,0.22)"], [1, "rgba(0,0,0,0)"],
++    [0, "rgba(0,0,0,0)"], [0.34, "rgba(120,40,8,0.24)"], [0.45, "#e08a34"],
++    [0.5, "#fff2d6"], [0.55, "#d1701f"], [0.66, "rgba(120,40,8,0.22)"], [1, "rgba(0,0,0,0)"],
+   ]));
+   const vignette = linearGradientPaint(0, 0, 0, height, [
+     [0, "rgba(0,0,0,1)"], [0.34, "rgba(0,0,0,0.3)"], [0.5, "rgba(0,0,0,0)"],
+diff --git a/app/src/engine/cards/blackLabelReveal/art/blackLabelCardArt.ts b/app/src/engine/cards/blackLabelReveal/art/blackLabelCardArt.ts
+index 7cb629f..ea9dcef 100644
+--- a/app/src/engine/cards/blackLabelReveal/art/blackLabelCardArt.ts
++++ b/app/src/engine/cards/blackLabelReveal/art/blackLabelCardArt.ts
+@@ -1,293 +1,35 @@
+-// Black Label's collector card faces — a palette variant of ../../vaultReveal/art/cardArt.ts
+-// (same substitution approach as ../art/blackLabelArt.ts; see that file's header). The RARITY
+-// table (Core/Prime/Grail ribbon colors) is deliberately left untouched: rarity coloring is a
+-// GrailHaus-wide semantic (the same grey/gold/cream-gold everywhere a card shows its tier),
+-// not something Black Label re-skins — only the card *frame* chrome (border, hairline overlay,
+-// footer seal, verso) picks up this tier's bronze-on-onyx finish instead of Vault Break's
+-// champagne-on-violet.
++// Black Label's card faces reuse ../../vaultReveal/art/cardArt.ts's drawCardFace/
++// drawCardFaceImage directly — the theme hooks that file's header describes (stock/ribbon/
++// accent/windowArt on VaultCardData, set by ../engine/adaptBlackLabelDeck.ts) are what give the
++// card its obsidian-and-fire frame, so this file only needs to bind the *verso* (which has no
++// per-card data to carry a theme on) to this tier's own APEX_VERSO theme — the design's own
++// card-art.js keeps the same shape (a shared drawCardVerso(theme) with a per-tier constant).
++import type { SkImage } from "@shopify/react-native-skia";
+ import {
+-  Skia,
+-  ClipOp,
+-  PaintStyle,
+-  TileMode,
+-  type SkCanvas,
+-  type SkImage,
+-} from "@shopify/react-native-skia";
+-import {
+-  makeSurface,
+-  fillPaint,
+-  strokePaint,
+-  linearGradientPaint,
+-  roundRectPath,
+-  drawTrackedText,
+-} from "../../reveal/art/canvasHelpers";
+-import { metalShader as baseMetalShader, hairlines, guilloche, microBlock } from "../../vaultReveal/art/artUtil";
+-import type { GradientStop } from "../../reveal/art/canvasHelpers";
+-
+-// Black Label's own metal ramp — see ../../blackLabelReveal/art/blackLabelArt.ts's header for
+-// why this file exists as a palette variant of cardArt.ts rather than a rewrite.
+-const BRONZE_STOPS: GradientStop[] = [
+-  [0, "#4a3512"], [0.14, "#c9a24a"], [0.32, "#f0dba0"],
+-  [0.5, "#8a6a2e"], [0.66, "#d8b96a"], [0.86, "#3a2a10"], [1, "#1f1608"],
+-];
+-const bronzeShader = (y0: number, y1: number) => baseMetalShader(y0, y1, BRONZE_STOPS);
+-import type { CardRarity, VaultCardData } from "../../vaultReveal/config/types";
+-
+-export interface PixelImage {
+-  data: Uint8Array;
+-  width: number;
+-  height: number;
+-}
+-
+-export const CARD_ASPECT = 310 / 434; // width/height, for sizing the flat 2D fan layout
+-const CW = 310, CH = 434; // half the prototype's 620x868 — a phone shows these at a fraction of
+-// a browser-preview's width; every pixel constant below is native to this resolution.
+-const IVORY = "#f4ece0";
+-const CH_C = "#c9a24a";
+-
+-export const RARITY: Record<CardRarity, { ink: string; ribbon: [string, string, string]; glow: number; metal: number }> = {
+-  CORE: { ink: "#c9c3d6", ribbon: ["#2a2733", "#6d6879", "#2a2733"], glow: 0.0, metal: 0.22 },
+-  PRIME: { ink: "#f4ece0", ribbon: ["#33280f", "#b99b57", "#33280f"], glow: 0.35, metal: 0.42 },
+-  GRAIL: { ink: "#fff6e0", ribbon: ["#4a2f0c", "#f0d79c", "#4a2f0c"], glow: 1.0, metal: 0.62 },
++  CARD_ASPECT,
++  drawCardFace,
++  drawCardFaceImage,
++  drawCardVerso as drawCardVersoThemed,
++  drawCardVersoImage as drawCardVersoImageThemed,
++  type PixelImage,
++  type CardVersoTheme,
++} from "../../vaultReveal/art/cardArt";
++
++export { CARD_ASPECT, drawCardFace, drawCardFaceImage };
++
++export const APEX_VERSO: CardVersoTheme = {
++  stock: ["#0a090f", "#181519", "#030305"],
++  band: "#6b5326",
++  accRGB: "216,184,119",
++  second: "255,120,40",
++  line1: "BLACK LABEL · SERIES I",
++  line2: "THE ELEMENTAL SERIES",
+ };
+ 
+-// Deterministic pseudo-random so a card looks the same every time it is drawn (and the same on
+-// every device — no Math.random() in the art path). `card.seed` is meant to be derived from a
+-// real item's id (a stable per-catalog-item value, not per-render) whenever this art is driven
+-// by real content again.
+-function rng(seed: number) {
+-  let s = (seed * 2654435761) % 2147483647;
+-  if (s <= 0) s += 2147483646;
+-  return () => (s = (s * 48271) % 2147483647) / 2147483647;
+-}
+-
+-// Abstract vault-geometry artwork filling the card's art window.
+-function cardWindowArt(canvas: SkCanvas, x: number, y: number, w: number, h: number, card: VaultCardData) {
+-  const r = rng(card.seed);
+-  canvas.save();
+-  canvas.clipPath(roundRectPath(x, y, w, h, 8), ClipOp.Intersect, true);
+-
+-  canvas.drawRect(Skia.XYWHRect(x, y, w, h), linearGradientPaint(x, y, x + w * 0.4, y + h, [
+-    [0, "#0d0620"], [0.5, card.tint], [1, "#050310"],
+-  ]));
+-
+-  const cx = x + w / 2, cy = y + h * 0.5;
+-  const haze = Skia.Paint();
+-  haze.setShader(Skia.Shader.MakeRadialGradient(
+-    Skia.Point(cx, cy - h * 0.1), w * 0.75,
+-    [Skia.Color("rgba(230,196,120,0.24)"), Skia.Color("rgba(0,0,0,0)")],
+-    null, TileMode.Clamp
+-  ));
+-  canvas.drawRect(Skia.XYWHRect(x, y, w, h), haze);
+-
+-  for (let i = 6; i >= 1; i--) {
+-    canvas.drawArc(
+-      Skia.XYWHRect(cx - i * w * 0.1, cy + h * 0.22 - i * w * 0.1, i * w * 0.2, i * w * 0.2),
+-      180, 180, false,
+-      strokePaint(`rgba(201,162,74,${0.05 + i * 0.035})`, 1.4 + i * 0.5)
+-    );
+-  }
+-
+-  guilloche(canvas, cx, cy, { r: w * 0.42, lobes: 9, lines: 14, turns: 4, stroke: "rgba(201,162,74,0.06)" });
+-
+-  const mw = w * 0.3, mh = h * 0.5;
+-  const monolith = Skia.Path.Make();
+-  monolith.moveTo(cx, cy - mh * 0.62);
+-  monolith.lineTo(cx + mw * 0.5, cy - mh * 0.3);
+-  monolith.lineTo(cx + mw * 0.5, cy + mh * 0.42);
+-  monolith.lineTo(cx, cy + mh * 0.6);
+-  monolith.lineTo(cx - mw * 0.5, cy + mh * 0.42);
+-  monolith.lineTo(cx - mw * 0.5, cy - mh * 0.3);
+-  monolith.close();
+-  canvas.drawPath(monolith, linearGradientPaint(cx - mw * 0.5, cy, cx + mw * 0.5, cy, [
+-    [0, "rgba(255,255,255,0.08)"], [0.4, "rgba(255,246,224,0.42)"],
+-    [0.52, "rgba(150,140,170,0.22)"], [1, "rgba(255,255,255,0.06)"],
+-  ]));
+-  canvas.drawPath(monolith, strokePaint("rgba(201,162,74,0.8)", 2));
+-
+-  const dot = fillPaint("#ffffff");
+-  for (let i = 0; i < 46; i++) {
+-    const px = x + r() * w, py = y + r() * h;
+-    dot.setColor(Skia.Color(i % 5 ? "#ffffff" : CH_C));
+-    dot.setAlphaf(0.1 + r() * 0.4);
+-    const sz = 1 + (i % 4 === 0 ? 1 : 0);
+-    canvas.drawRect(Skia.XYWHRect(px, py, sz, sz), dot);
+-  }
+-
+-  const glow = Skia.Paint();
+-  glow.setShader(Skia.Shader.MakeRadialGradient(
+-    Skia.Point(cx, cy + h * 0.3), w * 0.46,
+-    [Skia.Color(`rgba(${card.glowRGB},0.4)`), Skia.Color("rgba(0,0,0,0)")],
+-    null, TileMode.Clamp
+-  ));
+-  canvas.drawRect(Skia.XYWHRect(x, cy, w, h - (cy - y)), glow);
+-
+-  hairlines(canvas, x, y, w, h, { step: 4, angle: -0.5, alpha: 0.03 });
+-  canvas.restore();
+-}
+-
+-function sparkline(canvas: SkCanvas, x: number, y: number, w: number, h: number, series: number[], up: boolean) {
+-  const min = Math.min(...series), max = Math.max(...series);
+-  const sx = (i: number) => x + (i / (series.length - 1)) * w;
+-  const sy = (v: number) => y + h - ((v - min) / Math.max(1e-6, max - min)) * h;
+-
+-  const fillArea = Skia.Path.Make();
+-  fillArea.moveTo(sx(0), sy(series[0]));
+-  series.forEach((v, i) => fillArea.lineTo(sx(i), sy(v)));
+-  fillArea.lineTo(sx(series.length - 1), y + h);
+-  fillArea.lineTo(sx(0), y + h);
+-  fillArea.close();
+-  canvas.drawPath(fillArea, linearGradientPaint(0, y, 0, y + h, [
+-    [0, up ? "rgba(126,214,164,0.32)" : "rgba(214,126,140,0.3)"], [1, "rgba(0,0,0,0)"],
+-  ]));
+-
+-  const curve = Skia.Path.Make();
+-  series.forEach((v, i) => (i ? curve.lineTo(sx(i), sy(v)) : curve.moveTo(sx(i), sy(v))));
+-  canvas.drawPath(curve, strokePaint(up ? "#7ed6a4" : "#d67e8c", 2));
+-
+-  canvas.drawCircle(sx(series.length - 1), sy(series[series.length - 1]), 3.2, fillPaint(up ? "#a8ecc6" : "#eca8b4"));
+-}
+-
+-function paintCardFace(canvas: SkCanvas, card: VaultCardData) {
+-  const rar = RARITY[card.rarity];
+-
+-  canvas.drawRect(Skia.XYWHRect(0, 0, CW, CH), linearGradientPaint(0, 0, CW, CH, [
+-    [0, "#150a28"], [0.5, "#241041"], [1, "#0b0518"],
+-  ]));
+-  hairlines(canvas, 0, 0, CW, CH, { step: 6, angle: -0.4, alpha: 0.035 });
+-
+-  canvas.drawRect(Skia.XYWHRect(3, 3, CW - 6, CH - 6), strokePaint(rar.ribbon[1], 5 + rar.glow * 2));
+-  canvas.drawRect(Skia.XYWHRect(11, 11, CW - 22, CH - 22), strokePaint("rgba(244,236,224,0.26)", 0.7));
+-
+-  const rx = 20, ry = 21, rw = CW - 40, rh = 19;
+-  canvas.drawRect(Skia.XYWHRect(rx, ry, rw, rh), linearGradientPaint(rx, 0, rx + rw, 0, [
+-    [0, rar.ribbon[0]], [0.5, rar.ribbon[1]], [1, rar.ribbon[2]],
+-  ]));
+-  canvas.drawRect(Skia.XYWHRect(rx, ry, rw, rh), strokePaint("rgba(0,0,0,0.5)", 0.5));
+-  drawTrackedText(canvas, `${card.rarityLabel} · ${card.edition}`, rx + rw / 2, ry + 13, {
+-    size: 8.5, bold: true, mono: true, letterSpacing: 3.5, fill: rar.glow > 0.5 ? "#1a0f2e" : "#f0ece4",
+-  });
+-
+-  drawTrackedText(canvas, card.name, CW / 2, ry + 48, {
+-    size: 22, letterSpacing: 0.5, fill: IVORY, shadow: "rgba(0,0,0,0.6)", shadowBlur: 6,
+-  });
+-  drawTrackedText(canvas, `GRAILHAUS · SERIES I · ${card.finish}`, CW / 2, ry + 62, {
+-    size: 7, bold: true, mono: true, letterSpacing: 2.5, fill: "rgba(244,236,224,0.48)",
+-  });
+-
+-  // Every pulled item that has a real catalog photo shows that instead of this raster entirely
+-  // (see VaultCardFanReveal) — this whole face, abstract art window included, is now only the
+-  // fallback for the rare item with no texture, so it stays the original full design rather than
+-  // a stripped-down variant of it.
+-  const ax = 24, ay = 106, aw = CW - 48, ah = 186;
+-  cardWindowArt(canvas, ax, ay, aw, ah, card);
+-  canvas.drawPath(roundRectPath(ax, ay, aw, ah, 8), strokePaint("rgba(201,162,74,0.5)", 1));
+-
+-  const vy = ay + ah + 15;
+-  const vh = 74;
+-  canvas.drawRect(Skia.XYWHRect(24, vy, CW - 48, vh), fillPaint("rgba(5,3,12,0.72)"));
+-  canvas.drawRect(Skia.XYWHRect(24, vy, CW - 48, vh), strokePaint("rgba(201,162,74,0.18)", 0.7));
+-
+-  drawTrackedText(canvas, "EST. VALUE", 35, vy + 15, {
+-    size: 6.5, bold: true, mono: true, letterSpacing: 2, fill: "rgba(244,236,224,0.44)", align: "left",
+-  });
+-  drawTrackedText(canvas, card.value, 35, vy + 37, { size: 20, fill: IVORY, align: "left" });
+-  const up = card.delta >= 0;
+-  drawTrackedText(canvas, `${up ? "▲" : "▼"} ${Math.abs(card.delta).toFixed(1)}%`, CW - 35, vy + 18, {
+-    size: 11, bold: true, letterSpacing: 0.5, fill: up ? "#7ed6a4" : "#d67e8c", align: "right",
+-  });
+-  drawTrackedText(canvas, "7D", CW - 35, vy + 30, {
+-    size: 6, bold: true, mono: true, letterSpacing: 2, fill: "rgba(244,236,224,0.38)", align: "right",
+-  });
+-  sparkline(canvas, CW - 125, vy + 35, 90, 20, card.spark, up);
+-  drawTrackedText(canvas, card.held, 35, vy + 64, {
+-    size: 6.5, bold: true, mono: true, letterSpacing: 1.5, fill: "rgba(244,236,224,0.38)", align: "left",
+-  });
+-
+-  const fy = CH - 25;
+-  const rule = Skia.Path.Make();
+-  rule.moveTo(24, fy - 13); rule.lineTo(CW - 24, fy - 13);
+-  canvas.drawPath(rule, strokePaint("rgba(201,162,74,0.16)", 0.5));
+-  drawTrackedText(canvas, "GRAILHAUS", 24, fy, {
+-    size: 9.5, bold: true, letterSpacing: 2.5, fill: "rgba(244,236,224,0.78)", align: "left",
+-  });
+-  drawTrackedText(canvas, card.serial, CW - 24, fy, {
+-    size: 7, bold: true, mono: true, letterSpacing: 1.5, fill: "rgba(244,236,224,0.44)", align: "right",
+-  });
+-  canvas.drawCircle(CW / 2, fy - 3, 7.5, strokePaint(CH_C, 1));
+-  canvas.drawCircle(CW / 2, fy - 3, 5.5, strokePaint("rgba(201,162,74,0.34)", 0.5));
+-  drawTrackedText(canvas, "✓", CW / 2, fy, { size: 7.5, bold: true, fill: CH_C });
+-}
+-
+-export function drawCardFace(card: VaultCardData): PixelImage {
+-  const surf = makeSurface(CW, CH);
+-  paintCardFace(surf.canvas, card);
+-  return { data: surf.toRGBA(), width: CW, height: CH };
+-}
+-
+-/** Same face art as drawCardFace, snapshotted as a displayable SkImage for flat 2D rendering
+- * (VaultCardFanReveal) instead of a three.js texture — the fallback for a pulled item with no
+- * real catalog photo; an item that has one shows that instead of this raster entirely. */
+-export function drawCardFaceImage(card: VaultCardData): SkImage {
+-  const surf = makeSurface(CW, CH);
+-  paintCardFace(surf.canvas, card);
+-  return surf.toImage();
+-}
+-
+-// Shared card verso — collector artifact, no per-card data.
+-function paintCardVerso(canvas: SkCanvas) {
+-  canvas.drawRect(Skia.XYWHRect(0, 0, CW, CH), linearGradientPaint(0, 0, CW, CH, [
+-    [0, "#100722"], [0.5, "#1f0f3a"], [1, "#08040f"],
+-  ]));
+-  hairlines(canvas, 0, 0, CW, CH, { step: 5, angle: 0.42, alpha: 0.04 });
+-
+-  canvas.drawRect(Skia.XYWHRect(3, 3, CW - 6, CH - 6), strokePaint("#4a3a12", 5));
+-  canvas.drawRect(Skia.XYWHRect(12, 12, CW - 24, CH - 24), strokePaint("rgba(201,162,74,0.2)", 0.6));
+-
+-  guilloche(canvas, CW / 2, CH * 0.46, { r: 107, lobes: 12, lines: 24, stroke: "rgba(201,162,74,0.11)" });
+-  guilloche(canvas, CW / 2, CH * 0.46, { r: 56, lobes: 6, lines: 14, turns: 3, stroke: "rgba(201,162,74,0.12)" });
+-
+-  canvas.save();
+-  canvas.translate(CW / 2, CH * 0.46);
+-  const seal = Skia.Path.Make();
+-  for (let i = 0; i < 8; i++) {
+-    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+-    const x = Math.cos(a) * 48, y = Math.sin(a) * 48;
+-    if (i === 0) seal.moveTo(x, y); else seal.lineTo(x, y);
+-  }
+-  seal.close();
+-  canvas.drawPath(seal, fillPaint("rgba(8,4,18,0.72)"));
+-  const sealStroke = Skia.Paint();
+-  sealStroke.setAntiAlias(true);
+-  sealStroke.setStyle(PaintStyle.Stroke);
+-  sealStroke.setStrokeWidth(1.5);
+-  sealStroke.setShader(bronzeShader(-48, 48));
+-  canvas.drawPath(seal, sealStroke);
+-  drawTrackedText(canvas, "G", 0, 22, { size: 61, bold: true, shader: bronzeShader(-35, 25) });
+-  canvas.restore();
+-
+-  drawTrackedText(canvas, "GRAILHAUS", CW / 2, 64, { size: 15, bold: true, letterSpacing: 4, shader: bronzeShader(50, 67) });
+-  drawTrackedText(canvas, "COLLECTOR CARD GAME", CW / 2, 79, {
+-    size: 6.5, bold: true, mono: true, letterSpacing: 3, fill: "rgba(244,236,224,0.5)",
+-  });
+-  drawTrackedText(canvas, "BLACK LABEL · SERIES I", CW / 2, CH - 74, {
+-    size: 7.5, bold: true, mono: true, letterSpacing: 3.5, fill: "rgba(201,162,74,0.62)",
+-  });
+-  microBlock(canvas, CW / 2 - 60, CH - 61, 120, 4, { rowH: 4, alpha: 0.18 });
+-  drawTrackedText(canvas, "THE COLLECTOR'S VAULT", CW / 2, CH - 29, {
+-    size: 6, bold: true, mono: true, letterSpacing: 2.5, fill: "rgba(244,236,224,0.34)",
+-  });
+-}
+-
+ export function drawCardVerso(): PixelImage {
+-  const surf = makeSurface(CW, CH);
+-  paintCardVerso(surf.canvas);
+-  return { data: surf.toRGBA(), width: CW, height: CH };
++  return drawCardVersoThemed(APEX_VERSO);
+ }
+ 
+-/** Same verso art as drawCardVerso, snapshotted as a displayable SkImage. */
+ export function drawCardVersoImage(): SkImage {
+-  const surf = makeSurface(CW, CH);
+-  paintCardVerso(surf.canvas);
+-  return surf.toImage();
++  return drawCardVersoImageThemed(APEX_VERSO);
+ }
+diff --git a/app/src/engine/cards/blackLabelReveal/art/fire.ts b/app/src/engine/cards/blackLabelReveal/art/fire.ts
+new file mode 100644
+index 0000000..04f1b5a
+--- /dev/null
++++ b/app/src/engine/cards/blackLabelReveal/art/fire.ts
+@@ -0,0 +1,370 @@
++// Black Label's fire system — ported from the actual Claude Design handoff's fire.js almost
++// unchanged. Everything here is GPU-animated: each layer is one THREE.Points draw call whose
++// particles loop on their own clock in the vertex shader, so intensity/surge/color are uniform
++// writes per frame, not per-particle CPU work — the same reasoning that made
++// ../../vaultReveal/engine/buildVaultPackObject.ts's tear deformation affordable applies here.
++// Layers read as fire *coming out of* the card/pack — a tight edge-hugging skirt, a taller sheet
++// behind the plane, embers, smoke, sparks — never as a rectangular border; see each layer's emit
++// function below.
++//
++// The only real port change: the original's two texture functions (wispTex/dotTex) built their
++// sprites on a DOM <canvas>, which React Native has none of. They're rebuilt here on Skia's
++// offscreen surface — the same substitute ../../vaultReveal/engine/textures.ts's
++// makeDataTexture() already exists for — including the taper pass, which used
++// `ctx.globalCompositeOperation = 'destination-in'` against a vertical alpha ramp; Skia's
++// `BlendMode.DstIn` on a second draw is the exact same operation (only the ramp's alpha channel
++// matters under DstIn, so the RGB in its gradient stops is arbitrary — kept as `rgba(0,0,0,a)`
++// to mirror the original's own stops 1:1).
++import * as THREE from "three";
++import { Skia, TileMode, BlendMode } from "@shopify/react-native-skia";
++import { makeSurface } from "../../reveal/art/canvasHelpers";
++import { makeDataTexture } from "../../reveal/engine/textures";
++
++function wispTexture(): THREE.DataTexture {
++  const S = 128;
++  const surf = makeSurface(S, S);
++  const { canvas } = surf;
++  const g = Skia.Paint();
++  g.setShader(Skia.Shader.MakeRadialGradient(
++    Skia.Point(S / 2, S * 0.6), S * 0.5,
++    [
++      Skia.Color("rgba(255,255,255,1)"), Skia.Color("rgba(255,242,214,0.86)"),
++      Skia.Color("rgba(255,176,74,0.34)"), Skia.Color("rgba(255,96,20,0.08)"), Skia.Color("rgba(255,80,16,0)"),
++    ],
++    [0, 0.16, 0.4, 0.72, 1], TileMode.Clamp
++  ));
++  canvas.drawRect(Skia.XYWHRect(0, 0, S, S), g);
++  // taper the tip so particles read as tongues of flame, not dots — see this file's header
++  const taper = Skia.Paint();
++  taper.setShader(Skia.Shader.MakeLinearGradient(
++    Skia.Point(0, 0), Skia.Point(0, S),
++    [Skia.Color("rgba(0,0,0,0)"), Skia.Color("rgba(0,0,0,0.55)"), Skia.Color("rgba(0,0,0,1)"), Skia.Color("rgba(0,0,0,0.5)")],
++    [0, 0.34, 0.66, 1], TileMode.Clamp
++  ));
++  taper.setBlendMode(BlendMode.DstIn);
++  canvas.drawRect(Skia.XYWHRect(0, 0, S, S), taper);
++  const tex = makeDataTexture({ data: surf.toRGBA(), width: S, height: S });
++  return tex;
++}
++
++function dotTexture(soft: boolean): THREE.DataTexture {
++  const S = 64;
++  const surf = makeSurface(S, S);
++  const { canvas } = surf;
++  const stops = soft
++    ? { colors: ["rgba(255,255,255,0.5)", "rgba(255,255,255,0.16)", "rgba(255,255,255,0)"], pos: [0, 0.5, 1] }
++    : { colors: ["rgba(255,255,255,1)", "rgba(255,255,255,0.8)", "rgba(255,255,255,0.14)", "rgba(255,255,255,0)"], pos: [0, 0.3, 0.7, 1] };
++  const g = Skia.Paint();
++  g.setShader(Skia.Shader.MakeRadialGradient(
++    Skia.Point(S / 2, S / 2), S / 2,
++    stops.colors.map((c) => Skia.Color(c)), stops.pos, TileMode.Clamp
++  ));
++  canvas.drawRect(Skia.XYWHRect(0, 0, S, S), g);
++  return makeDataTexture({ data: surf.toRGBA(), width: S, height: S });
++}
++
++const VERT = /* glsl */ `
++uniform float uTime, uLevel, uSurge, uSize, uLife, uRise, uSway, uPix, uSpin, uConverge;
++attribute vec3 aSeed;
++attribute float aPhase;
++varying float vHeat, vAlpha, vSeed;
++void main() {
++  float life = uLife * (0.55 + 0.9 * aSeed.x);
++  float t = fract(uTime / life + aPhase);
++  vec3 p = position;
++  float rise = uRise * (0.6 + 0.8 * aSeed.y) * (1.0 + uSurge * 1.6);
++  p.y += t * rise;
++  float ph = aSeed.z * 43.0;
++  p.x += (sin(uTime * uSway + ph) * 0.55 + sin(uTime * uSway * 2.3 + ph * 1.7) * 0.45)
++         * rise * 0.22 * t;
++  p.z += cos(uTime * uSway * 0.8 + ph) * rise * 0.1 * t;
++  p.x *= 1.0 - uConverge * t;
++  vec4 mv = modelViewMatrix * vec4(p, 1.0);
++  float grow = smoothstep(0.0, 0.22, t);
++  float die = 1.0 - smoothstep(0.55, 1.0, t);
++  float size = uSize * (0.4 + 1.5 * t) * (0.55 + 0.9 * aSeed.y) * (1.0 + uSurge * 0.7);
++  gl_PointSize = size * uPix / max(0.0001, -mv.z);
++  vAlpha = grow * die * uLevel * (0.6 + 0.4 * aSeed.x);
++  vHeat = pow(1.0 - t, 1.5) + uSurge * 0.25;
++  vSeed = aSeed.z + uTime * uSpin;
++  gl_Position = projectionMatrix * mv;
++}`;
++
++const FRAG = /* glsl */ `
++uniform sampler2D uMap;
++uniform vec3 uHot, uMid, uCool;
++uniform float uSpin;
++varying float vHeat, vAlpha, vSeed;
++void main() {
++  vec2 uv = gl_PointCoord - 0.5;
++  if (uSpin > 0.0) {
++    float a = vSeed * 6.2831;
++    uv = mat2(cos(a), -sin(a), sin(a), cos(a)) * uv;
++  }
++  vec4 tx = texture2D(uMap, uv + 0.5);
++  float h = clamp(vHeat, 0.0, 1.4);
++  vec3 col = mix(uCool, uMid, smoothstep(0.0, 0.55, h));
++  col = mix(col, uHot, smoothstep(0.62, 1.15, h));
++  float a = tx.a * vAlpha;
++  if (a < 0.004) discard;
++  gl_FragColor = vec4(col * (0.85 + h * 0.8), a);
++}`;
++
++interface LayerOpts {
++  count: number;
++  map: THREE.Texture;
++  size: number;
++  life: number;
++  rise: number;
++  sway: number;
++  hot: number;
++  mid: number;
++  cool: number;
++  blending?: THREE.Blending;
++  spin?: number;
++  converge?: number;
++  emit: (u: number, i: number) => [number, number, number];
++}
++
++function layer(opts: LayerOpts): THREE.Points {
++  const {
++    count, map, size, life, rise, sway, hot, mid, cool,
++    blending = THREE.AdditiveBlending, spin = 0, converge = 0.34, emit,
++  } = opts;
++  const pos = new Float32Array(count * 3);
++  const seed = new Float32Array(count * 3);
++  const phase = new Float32Array(count);
++  for (let i = 0; i < count; i++) {
++    const p = emit(i / count, i);
++    pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2];
++    seed[i * 3] = Math.random();
++    seed[i * 3 + 1] = Math.random();
++    seed[i * 3 + 2] = Math.random();
++    phase[i] = Math.random();
++  }
++  const geo = new THREE.BufferGeometry();
++  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
++  geo.setAttribute("aSeed", new THREE.BufferAttribute(seed, 3));
++  geo.setAttribute("aPhase", new THREE.BufferAttribute(phase, 1));
++  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1);
++  const mat = new THREE.ShaderMaterial({
++    uniforms: {
++      uTime: { value: 0 }, uLevel: { value: 0 }, uSurge: { value: 0 },
++      uSize: { value: size }, uLife: { value: life }, uRise: { value: rise },
++      uSway: { value: sway }, uPix: { value: 600 }, uSpin: { value: spin },
++      uConverge: { value: converge },
++      uMap: { value: map },
++      uHot: { value: new THREE.Color(hot) },
++      uMid: { value: new THREE.Color(mid) },
++      uCool: { value: new THREE.Color(cool) },
++    },
++    vertexShader: VERT, fragmentShader: FRAG,
++    transparent: true, depthWrite: false, depthTest: true,
++    blending,
++  });
++  const pts = new THREE.Points(geo, mat);
++  pts.frustumCulled = false;
++  return pts;
++}
++
++// Fire palette: crimson at the tail, molten orange through the body, champagne-white only at
++// the core.
++const HOT = 0xfff1cf, MID = 0xff7a1e, COOL = 0x7a0f06;
++
++export interface BuiltFire {
++  group: THREE.Group;
++  sweep: THREE.Mesh;
++  step: (dt: number, camera: THREE.Camera | null, pixHeight: number) => { level: number; flick: number; surge: number };
++  setLevel: (v: number) => void;
++  burst: () => void;
++  runSweep: () => void;
++  readonly level: number;
++  dispose: () => void;
++}
++
++export function buildFire({ cardW, cardH, pack = false }: { cardW: number; cardH: number; pack?: boolean }): BuiltFire {
++  const group = new THREE.Group();
++  group.name = pack ? "packFire" : "apexFire";
++
++  const wisp = wispTexture(), dot = dotTexture(false), puff = dotTexture(true);
++  const hx = cardW / 2, hy = cardH / 2;
++  const disposeGeo: THREE.BufferGeometry[] = [];
++  const disposeMat: THREE.Material[] = [];
++  const disposeTex: THREE.Texture[] = [wisp, dot, puff];
++
++  // Perimeter sample, weighted to corners and the lower edge. Emission sits just OUTSIDE the
++  // card outline and a hair BEHIND its plane, so the card always depth-tests in front of its own
++  // flames and never washes out.
++  const rim = (u: number): [number, number, number] => {
++    const s = (u * 1.618) % 1;
++    let x: number, y: number;
++    if (pack) {
++      if (s < 0.34) { x = (u * 2 - 1) * hx * 1.02; y = -hy * 1.0; }
++      else { x = (Math.random() < 0.5 ? -1 : 1) * hx * (1.0 + Math.random() * 0.1); y = (Math.random() * 2 - 1) * hy * 1.02; }
++      return [x, y, (Math.random() - 0.42) * 0.036];
++    }
++    if (s < 0.42) { x = (u * 2 - 1) * hx * 1.02; y = -hy * 1.03; }
++    else if (s < 0.74) { x = (Math.random() < 0.5 ? -1 : 1) * hx * 1.04; y = (Math.random() * 2 - 1) * hy; }
++    else if (s < 0.9) { x = (u * 2 - 1) * hx * 0.92; y = hy * 1.02; }
++    else { x = (Math.random() < 0.5 ? -1 : 1) * hx * 1.0; y = (Math.random() < 0.5 ? -1 : 1) * hy * 0.98; }
++    return [x, y, -0.0016 - Math.random() * 0.002];
++  };
++
++  const skirt = layer({
++    count: pack ? 300 : 340, map: wisp,
++    size: pack ? 0.0135 : 0.0062, life: pack ? 0.8 : 0.62,
++    rise: pack ? 0.05 : 0.014, sway: pack ? 3.2 : 5.2,
++    converge: pack ? -0.06 : 0.34,
++    hot: HOT, mid: MID, cool: COOL, emit: rim,
++  });
++  skirt.name = "fireSkirt";
++
++  const sheet = layer({
++    count: 220, map: wisp, size: pack ? 0.026 : 0.019, life: 1.35,
++    rise: pack ? 0.08 : 0.062, sway: 2.4,
++    hot: 0xffd9a0, mid: 0xf2600f, cool: 0x4a0703,
++    emit: (u) => [
++      (u * 2 - 1) * hx * (pack ? 1.12 : 1.06),
++      -hy * (0.5 + Math.random() * 0.5),
++      pack ? -0.03 - Math.random() * 0.02 : -0.006 - Math.random() * 0.01,
++    ],
++  });
++  sheet.name = "fireSheet";
++
++  const cracks = layer({
++    count: 90, map: wisp, size: 0.0034, life: 0.8, rise: 0.012, sway: 4.0,
++    hot: 0xfff6e2, mid: 0xff9330, cool: 0x6d1004,
++    emit: () => [(Math.random() * 2 - 1) * hx * 0.86, (Math.random() * 2 - 1) * hy * 0.88, 0.0012],
++  });
++  cracks.name = "fireCracks";
++
++  const embers = layer({
++    count: 160, map: dot, size: 0.0034, life: 3.4, rise: 0.14, sway: 1.1,
++    hot: 0xffe7bd, mid: 0xff8a2a, cool: 0x8e2408,
++    emit: () => [(Math.random() * 2 - 1) * hx * 1.5, -hy + Math.random() * cardH, (Math.random() - 0.5) * 0.03],
++  });
++  embers.name = "fireEmbers";
++
++  const smoke = layer({
++    count: 44, map: puff, size: pack ? 0.04 : 0.055, life: 4.2, rise: 0.17, sway: 0.7,
++    hot: 0x3a2a20, mid: 0x241a14, cool: 0x0d0908,
++    blending: THREE.NormalBlending, spin: 0.05, converge: 0,
++    emit: () => [(Math.random() * 2 - 1) * hx * 1.2, hy * (pack ? 0.9 : 0.2) + Math.random() * 0.02, -0.012],
++  });
++  smoke.name = "fireSmoke";
++
++  const sparks = layer({
++    count: 130, map: dot, size: 0.0026, life: 1.1, rise: 0.3, sway: 2.0,
++    hot: 0xffffff, mid: 0xffc46a, cool: 0xff5a12,
++    emit: () => [(Math.random() * 2 - 1) * hx * 1.1, (Math.random() * 2 - 1) * hy, (Math.random() - 0.5) * 0.01],
++  });
++  sparks.name = "fireSparks";
++
++  [smoke, sheet, embers, skirt, cracks, sparks].forEach((l) => {
++    disposeGeo.push(l.geometry);
++    disposeMat.push(l.material as THREE.Material);
++  });
++  group.add(smoke, sheet, embers, skirt, cracks, sparks);
++
++  // Light sweep across the card face — a single additive band, driven only during the reveal beat.
++  const sweepSurf = makeSurface(256, 8);
++  {
++    const p = Skia.Paint();
++    p.setShader(Skia.Shader.MakeLinearGradient(
++      Skia.Point(0, 0), Skia.Point(256, 0),
++      [
++        Skia.Color("rgba(0,0,0,0)"), Skia.Color("rgba(255,190,110,0.25)"), Skia.Color("rgba(255,246,224,0.95)"),
++        Skia.Color("rgba(255,170,80,0.22)"), Skia.Color("rgba(0,0,0,0)"),
++      ],
++      [0, 0.42, 0.5, 0.58, 1], TileMode.Clamp
++    ));
++    sweepSurf.canvas.drawRect(Skia.XYWHRect(0, 0, 256, 8), p);
++  }
++  const sweepTex = makeDataTexture({ data: sweepSurf.toRGBA(), width: 256, height: 8 });
++  disposeTex.push(sweepTex);
++  const sweepGeo = new THREE.PlaneGeometry(cardW * 0.34, cardH * 1.04);
++  disposeGeo.push(sweepGeo);
++  const sweepMat = new THREE.MeshBasicMaterial({
++    name: "apexSweep", map: sweepTex, transparent: true, opacity: 0,
++    blending: THREE.AdditiveBlending, depthWrite: false,
++  });
++  disposeMat.push(sweepMat);
++  const sweep = new THREE.Mesh(sweepGeo, sweepMat);
++  sweep.name = "apexSweep";
++  sweep.position.z = 0.0016;
++  sweep.rotation.z = -0.09;
++
++  // Heat haze: one large, very low-contrast additive wash that sits behind the card/pack and
++  // pushes warm light into the room without washing the subject out.
++  const haloGeo = new THREE.PlaneGeometry(cardW * (pack ? 2.6 : 5.5), cardH * (pack ? 1.5 : 3.4));
++  disposeGeo.push(haloGeo);
++  const haloMat = new THREE.MeshBasicMaterial({
++    name: "apexHalo", map: puff, color: 0xff6a18, transparent: true, opacity: 0,
++    blending: THREE.AdditiveBlending, depthWrite: false,
++  });
++  disposeMat.push(haloMat);
++  const halo = new THREE.Mesh(haloGeo, haloMat);
++  halo.name = "apexHalo";
++  halo.position.set(0, pack ? cardH * 0.1 : 0, pack ? -0.03 : -0.02);
++  group.add(halo, sweep);
++
++  const state = { level: 0, want: 0, surge: 0, sweep: -1, t: 0, flick: 0 };
++
++  const setLevel = (v: number) => { state.want = Math.max(0, Math.min(1, v)); };
++  const burst = () => { state.surge = 1; };
++  const runSweep = () => { state.sweep = 0; };
++
++  const step = (dt: number, camera: THREE.Camera | null, pixHeight: number) => {
++    state.t += dt;
++    state.level += (state.want - state.level) * Math.min(1, dt * 2.2);
++    state.surge = Math.max(0, state.surge - dt * 1.35);
++    state.flick = 0.82 + 0.18 * Math.sin(state.t * 11.3) * Math.cos(state.t * 5.1)
++      + 0.06 * Math.sin(state.t * 27.7);
++
++    const surgeE = state.surge * state.surge;
++    const projEl = (camera as THREE.PerspectiveCamera | null)?.projectionMatrix.elements[5];
++    const pix = pixHeight * 0.5 * (projEl || 1);
++    [smoke, sheet, embers, skirt, cracks, sparks].forEach((l) => {
++      const u = (l.material as THREE.ShaderMaterial).uniforms;
++      u.uTime.value = state.t;
++      u.uPix.value = pix;
++      u.uSurge.value = surgeE;
++    });
++    const lv = state.level;
++    const uOf = (m: THREE.Points) => (m.material as THREE.ShaderMaterial).uniforms;
++    uOf(skirt).uLevel.value = lv * (0.6 + 0.24 * state.flick) * (1 + surgeE * 0.6);
++    uOf(sheet).uLevel.value = Math.pow(lv, 1.25) * (0.55 + 0.35 * state.flick) * (1 + surgeE);
++    uOf(cracks).uLevel.value = pack ? 0 : Math.pow(lv, 2.2) * 0.28 * (1 + surgeE * 0.6);
++    uOf(embers).uLevel.value = Math.pow(lv, 0.8) * 0.8;
++    uOf(smoke).uLevel.value = Math.pow(lv, 1.1) * (pack ? 0.18 : 0.5);
++    uOf(sparks).uLevel.value = surgeE * 1.1 + lv * 0.05;
++
++    haloMat.opacity = Math.pow(lv, 1.5) * (pack ? 0.07 : 0.1) + surgeE * 0.22;
++    halo.scale.setScalar(1 + surgeE * 0.35);
++
++    if (state.sweep >= 0) {
++      state.sweep += dt / 1.15;
++      const q = state.sweep;
++      if (q >= 1) { state.sweep = -1; sweepMat.opacity = 0; } else {
++        sweep.position.x = (-0.85 + q * 1.7) * cardW;
++        sweepMat.opacity = Math.sin(Math.PI * q) * 0.9;
++      }
++    }
++    if (camera) {
++      const yaw = Math.atan2(camera.position.x - group.position.x, camera.position.z - group.position.z);
++      halo.rotation.y = yaw - group.rotation.y;
++    }
++    return { level: lv, flick: state.flick, surge: surgeE };
++  };
++
++  const dispose = () => {
++    disposeGeo.forEach((g) => g.dispose());
++    disposeMat.forEach((m) => m.dispose());
++    disposeTex.forEach((t) => t.dispose());
++  };
++
++  return {
++    group, sweep, step, setLevel, burst, runSweep, dispose,
++    get level() { return state.level; },
++  };
++}
+diff --git a/app/src/engine/cards/blackLabelReveal/config/blackLabel.config.ts b/app/src/engine/cards/blackLabelReveal/config/blackLabel.config.ts
+index 65461ee..6298157 100644
+--- a/app/src/engine/cards/blackLabelReveal/config/blackLabel.config.ts
++++ b/app/src/engine/cards/blackLabelReveal/config/blackLabel.config.ts
+@@ -1,45 +1,44 @@
+ import type { VaultBreakPersonality } from "../../vaultReveal/config/types";
++import { SEAM_FRAC, FLAP_FRAC } from "../art/blackLabelArt";
+ 
+-// Tier 3 — "Black Label", per GrailHaus Product Requirements Document.md §6/§11: $250, 7 cards,
+-// "high-stakes collecting... the user should feel 'something serious could happen here.'"
+-// Guarantees at least 2 Prime-or-Grail cards and a premium final reveal position; a Grail is
+-// never guaranteed by default ("the chase must remain meaningful").
++// Tier 3 — "Black Label". Numbers below are carried over from the actual Claude Design handoff
++// (grailhaus-vault-break.html's "Black Label" canvas + apex-art.js/fire.js) rather than the
++// GrailHaus PRD's own §6/§11 text — the two disagree on card count and the guarantee wording
++// (PRD: 7 cards, "at least 2 Prime-or-Grail"; the shipped design: 6 cards, "1 Prime or above",
++// "Grail 1 in 25 packs" per its own copy and its apexDeck() — 6 entries). Since the ask here was
++// explicitly to match the design canvas exactly, this follows the design, not the PRD text; the
++// discrepancy is worth resolving with product before this ships for real, but isn't this file's
++// call to make silently.
+ //
+-// Reuses Vault Break's exact personality shape (see ../../vaultReveal/config/types.ts's header)
+-// — same engine, same staged-reveal machinery, same tap/drag/pinch/flip inspection. Only the
+-// numbers below differ: a heavier, stiffer foil; a longer, more deliberate reveal sequence (the
+-// PRD's "premium final reveal position" reads, here, as more time held on the notice/present
+-// beats before the Grail — or lack of one — actually lands); and the onyx/bronze palette +
+-// lighting anchored to PackTile.tsx's existing `ART_GRADIENT.black_label` (`#FFF0CC` →
+-// `#5C4520`), the one piece of this tier's visual identity that already shipped before this file
+-// existed.
++// Reuses Vault Break's personality shape (see ../../vaultReveal/config/types.ts's header) — same
++// engine, same staged-reveal machinery, same tap/drag/pinch/flip inspection. `seamFrac`/
++// `flapFrac` are re-exported from the ported art module rather than duplicated, since the art and
++// the geometry have to agree on where the crimp/seam actually are.
+ const BASE_W = 0.068;
+ 
+ export const blackLabelPersonality: VaultBreakPersonality = {
+   id: "black-label",
+-  // Slightly larger than Vault Break's pack (1.03x base) — a heftier object for the pricier
+-  // tier, same proportions.
+-  size: { width: BASE_W * 1.08, height: BASE_W * 1.08 * (1200 / 800), thickness: 0.0205 },
+-  seamFrac: 0.222,
+-  flapFrac: 0.074,
++  size: { width: BASE_W * 1.06, height: BASE_W * 1.06 * (1200 / 800), thickness: 0.02 },
++  seamFrac: SEAM_FRAC,
++  flapFrac: FLAP_FRAC,
+   palette: {
+-    violet: "#241a08",
+-    plum: "#100e08",
+-    ink: "#050403",
+-    champagne: "#c9a24a",
+-    champagneHi: "#f0dba0",
+-    champagneMid: "#8a6a2e",
+-    champagneDark: "#3a2a10",
+-    graphite: "#211f1a",
+-    ivory: "#f0ece2",
++    violet: "#1c1c24",
++    plum: "#0c0c12",
++    ink: "#04040a",
++    champagne: "#d8b877",
++    champagneHi: "#f7e6bd",
++    champagneMid: "#a5854a",
++    champagneDark: "#57431f",
++    graphite: "#28282f",
++    ivory: "#f2ece2",
+   },
+   copy: {
+     kicker: "Tier III · Sealed",
+-    title: "Black ",
+-    titleEmphasis: "Label",
+-    meta: ["7 CARDS", "2 PRIME OR ABOVE", "SERIES I · S·1c"],
+-    hintDrag: "Drag along the seam",
+-    hintInspect: "Tap a card to inspect",
++    title: "Black Label",
++    titleEmphasis: "",
++    meta: ["6 CARDS", "1 PRIME OR ABOVE", "GRAIL 1 IN 25"],
++    hintDrag: "Tap and drag to open",
++    hintInspect: "Tap a card to inspect · drag to rotate",
+   },
+   // Stiffer, denser foil than Vault Break (lower roughness/higher metalness) — reads as a
+   // heavier-gauge material under the thumb, matching "something serious could happen here."
+@@ -56,15 +55,18 @@ export const blackLabelPersonality: VaultBreakPersonality = {
+   },
+   // Every stage runs a little longer than Vault Break's — this tier is meant to be sat with, not
+   // rushed through; `notice`/`present` in particular (the rarity moment itself) get the biggest
+-  // bump, since a Grail here is rarer than a Vault Break Grail (see the PRD's probability
+-  // tables) and the PRD explicitly calls for "a premium final reveal position."
++  // bump, since the design's own "Grail" reveal word (BlackLabelScene.tsx) needs room to land
++  // after the fire's release-burst.
+   reveal: {
+     stack: 1.1, hold: 0.7, rise: 0.9, separate: 1.75, settle: 0.85,
+     notice: 2.7, approach: 1.9, reveal: 1.7, present: 2.3,
+   },
+   haptics: { tickCount: 18, giveAt: 0.06, completeAt: 0.97 },
+-  // Cooler/dimmer hemi + a warm platinum-white key (vs. Vault Break's warm champagne) and a
+-  // bronze rim in place of Vault Break's violet — the "jewel box" reads as onyx-and-metal, not
+-  // as a darker version of the same violet room.
+-  lighting: { key: 0xfff6e6, rim: 0xc9a24a, hemiSky: 0x141210, hemiGround: 0x030302, spot: 0xffe9b0 },
++  // The base rig from the design's own script — key 0xfff0d6 (vs. Vault Break's warmer
++  // 0xfff3dc), an "ember rim" at 0xff7a1e standing in for Vault Break's violet rim, a dim
++  // near-black hemisphere (0x2a1610/0x050306) so the fire itself does most of the lighting, and
++  // the same 0xfff2d8 spot. BlackLabelScene.tsx adds the crimson fill, gold kick, and the fire's
++  // own point lights directly (see that file) — VaultLighting's shape only covers the five
++  // fields both tiers share.
++  lighting: { key: 0xfff0d6, rim: 0xff7a1e, hemiSky: 0x2a1610, hemiGround: 0x050306, spot: 0xfff2d8 },
+ };
+diff --git a/app/src/engine/cards/blackLabelReveal/engine/adaptBlackLabelDeck.ts b/app/src/engine/cards/blackLabelReveal/engine/adaptBlackLabelDeck.ts
+index 7e32d86..d963c43 100644
+--- a/app/src/engine/cards/blackLabelReveal/engine/adaptBlackLabelDeck.ts
++++ b/app/src/engine/cards/blackLabelReveal/engine/adaptBlackLabelDeck.ts
+@@ -2,9 +2,32 @@ import type { PackSku, PulledOwnedItem } from "@grailhaus/shared";
+ import { adaptPulledItemsToVaultDeck } from "../../vaultReveal/engine/adaptRealDeck";
+ import type { VaultCardData } from "../../vaultReveal/config/types";
+ 
++// Obsidian stock + gold ribbon/accent, per the design's own apexDeck() base object
++// (design-handoff card-art.js) — a fixed per-tier styling choice, not derived from any item's
++// data, same status as ../../vaultReveal/engine/adaptRealDeck.ts's own TINT_BY_RARITY/
++// GLOW_RGB_BY_RARITY tables.
++const OBSIDIAN: [string, string, string] = ["#0b0a10", "#17151c", "#040407"];
++const GOLD_RIBBON: [string, string, string] = ["#2e1c08", "#c08b45", "#2e1c08"];
++
+ /** Same real-data mapping as Vault Break's adaptPulledItemsToVaultDeck — see that file's header
+- * for what's real vs. a styling choice — just with this tier's own "BL-" serial prefix instead
+- * of "VB-". */
++ * for what's real vs. a styling choice — with this tier's own "BL-" serial prefix instead of
++ * "VB-", plus the theme hooks (art/cardArt.ts's header) that give the card its obsidian-and-fire
++ * frame instead of Vault Break's violet-and-champagne one.
++ *
++ * `tagline` and `traits` are deliberately left unset here: the design's own apexDeck() carries a
++ * tagline only on its one fictional Grail card ("Fire remembers what others forget") and no real
++ * pulled item has an equivalent authored line to draw from; traits are already read straight off
++ * the real `item.traits` field by the fan-reveal's own inspect sheet
++ * (BlackLabelFanReveal.tsx's DescriptionPanel), so duplicating them onto VaultCardData here would
++ * just be a second, redundant copy of the same string. */
+ export function adaptPulledItemsToBlackLabelDeck(items: PulledOwnedItem[], sku: PackSku): VaultCardData[] {
+-  return adaptPulledItemsToVaultDeck(items, sku, "BL");
++  return adaptPulledItemsToVaultDeck(items, sku, "BL").map((card) => ({
++    ...card,
++    stock: OBSIDIAN,
++    accent: "#d8b877",
++    accentRGB: "216,184,119",
++    windowArt: "pyro",
++    type: "Fire",
++    ...(card.rarity === "PRIME" || card.rarity === "GRAIL" ? { ribbon: GOLD_RIBBON } : {}),
++  }));
+ }
+diff --git a/app/src/engine/cards/blackLabelReveal/scene/BlackLabelScene.tsx b/app/src/engine/cards/blackLabelReveal/scene/BlackLabelScene.tsx
+new file mode 100644
+index 0000000..6c5b3bd
+--- /dev/null
++++ b/app/src/engine/cards/blackLabelReveal/scene/BlackLabelScene.tsx
+@@ -0,0 +1,388 @@
++// Black Label's 3D scene — forked from ../../vaultReveal/scene/VaultScene.tsx rather than
++// parameterized further, because the design's own lighting/fire choreography (the actual
++// Claude Design handoff's grailhaus-vault-break.html script) is genuinely a different render
++// loop, not a palette swap of Vault Break's: a crimson fill + "ember rim" + gold kick alongside
++// the shared key/hemi/spot, three point lights whose intensity rides the fire system's own
++// flicker, and a want-level state machine that ties fire intensity to tear progress and reveal
++// phase. Gesture handling, camera choreography's basic shape, and the pack/reveal engine
++// underneath are all identical to VaultScene's — only wired up here again because the lighting
++// and fire hooks live inside the same per-frame loop and splitting them into a shared component
++// with per-tier callbacks would have been more indirection than just forking the ~150 lines that
++// actually differ.
++import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef } from "react";
++import * as THREE from "three";
++import { useFrame } from "@react-three/fiber/native";
++import type { ThreeEvent } from "@react-three/fiber";
++import type { SkImage } from "@shopify/react-native-skia";
++import { buildBlackLabelPackObject } from "../engine/buildBlackLabelPackObject";
++import { useVaultInteraction } from "../../vaultReveal/gesture/useVaultInteraction";
++import type { BuiltVaultPack } from "../../vaultReveal/engine/buildVaultPackObject";
++import type { VaultBreakPersonality, VaultCardData } from "../../vaultReveal/config/types";
++import type { RevealPhase } from "../../vaultReveal/engine/buildReveal";
++import { buildFire, type BuiltFire } from "../art/fire";
++
++export interface BlackLabelSceneHandle {
++  reseal: () => void;
++  setOrbit: (on: boolean) => void;
++}
++
++export interface BlackLabelStateSnapshot {
++  phase: RevealPhase;
++  hero: number;
++  ready: boolean;
++  running: boolean;
++  dim: number;
++  shown: number;
++  /** Max of the card fire's and the pack fire's level, 0..~1 — drives BlackLabelVignette's
++   * --fire-equivalent glow, mirroring the design's `vign.style.setProperty('--fire', ...)`. */
++  fireLevel: number;
++  surge: number;
++  heroLabel: {
++    rarity: string; edition: string; name: string; value: string; serial: string;
++    tagline: string; type: string; traitsRaw: string | null;
++  } | null;
++}
++
++export interface BlackLabelSceneProps {
++  personality: VaultBreakPersonality;
++  deck: VaultCardData[];
++  logo: SkImage | null;
++  orbit: boolean;
++  onSnapshot?: (s: BlackLabelStateSnapshot) => void;
++  introDolly?: boolean;
++}
++
++const CENTER_Y = 0;
++const BASE_Z = 0.218;
++
++export const BlackLabelScene = memo(forwardRef<BlackLabelSceneHandle, BlackLabelSceneProps>(function BlackLabelScene(
++  { personality, deck, logo, orbit, onSnapshot, introDolly },
++  ref
++) {
++  const pack = useMemo<BuiltVaultPack>(() => buildBlackLabelPackObject(personality, deck, logo), [personality, deck, logo]);
++  const interaction = useVaultInteraction(pack, personality);
++
++  // ---- fire: the card's own fire is parented to whichever card isGrail; the sealed pack burns
++  // at pack scale too, so heat is already in the room before anything opens (design header:
++  // "the same system at pack scale, so heat is already in the room before anything is opened,
++  // and it dies back once the cards take over the story").
++  const fire = useMemo<BuiltFire>(() => buildFire({ cardW: pack.cardSize.w, cardH: pack.cardSize.h }), [pack]);
++  const packFire = useMemo<BuiltFire>(
++    () => buildFire({ cardW: pack.size.W * 1.02, cardH: pack.size.H * 0.94, pack: true }),
++    [pack]
++  );
++  useEffect(() => {
++    const grail = pack.reveal.grailCard;
++    if (grail) {
++      grail.obj.add(fire.group);
++      grail.faceMat.emissive = new THREE.Color(0x30100a);
++    }
++    packFire.group.name = "packFire";
++    pack.group.add(packFire.group);
++    return () => {
++      if (grail) grail.obj.remove(fire.group);
++      pack.group.remove(packFire.group);
++    };
++  }, [pack, fire, packFire]);
++  useEffect(() => () => { fire.dispose(); packFire.dispose(); }, [fire, packFire]);
++
++  const keyRef = useRef<THREE.DirectionalLight>(null);
++  const fillRef = useRef<THREE.DirectionalLight>(null);
++  const emberRimRef = useRef<THREE.DirectionalLight>(null);
++  const kickRef = useRef<THREE.DirectionalLight>(null);
++  const hemiRef = useRef<THREE.HemisphereLight>(null);
++  const spotRef = useRef<THREE.SpotLight>(null);
++  const spotTargetRef = useRef<THREE.Object3D>(null);
++  const fireLightRef = useRef<THREE.PointLight>(null);
++  const emberLightRef = useRef<THREE.PointLight>(null);
++  const packLightRef = useRef<THREE.PointLight>(null);
++  const cardKeyRef = useRef<THREE.DirectionalLight>(null);
++
++  const touching = useRef(0);
++  const reframeNext = useRef(false);
++  const hasReframedOnce = useRef(false);
++  const camAim = useRef({ x: 0, y: CENTER_Y + 0.006, z: BASE_Z, tx: 0, ty: CENTER_Y });
++  const lookAt = useRef(new THREE.Vector3(0, CENTER_Y, 0));
++  const lastPhase = useRef<RevealPhase>("idle");
++  const sweptAt = useRef(-1);
++  const lastSnapshot = useRef<BlackLabelStateSnapshot | null>(null);
++  const lastPlanePos = useRef(new Map<number, { x: number; y: number }>());
++  const wpos = useRef(new THREE.Vector3());
++
++  // eslint-disable-next-line react-hooks/exhaustive-deps
++  useEffect(() => {
++    interaction.toggleOrbit(orbit);
++    if (!orbit) reframeNext.current = true;
++  }, [orbit]);
++
++  useEffect(() => {
++    if (spotRef.current && spotTargetRef.current) spotRef.current.target = spotTargetRef.current;
++  }, []);
++
++  useEffect(() => () => pack.dispose(), [pack]);
++
++  useImperativeHandle(ref, () => ({
++    reseal: () => {
++      interaction.reseal();
++      pack.setProgress(0);
++      fire.setLevel(0);
++      sweptAt.current = -1;
++    },
++    setOrbit: (on: boolean) => interaction.toggleOrbit(on),
++  }), [pack, interaction, fire]);
++
++  const localXY = (e: ThreeEvent<PointerEvent>) => {
++    const p = pack.group.worldToLocal(e.point.clone());
++    return { x: p.x, y: p.y };
++  };
++  const planeXY = (e: ThreeEvent<PointerEvent>) => ({ x: e.point.x, y: e.point.y });
++
++  const handleDown = (e: ThreeEvent<PointerEvent>) => {
++    if (!pack.reveal.state.ready) touching.current = 1;
++    lastPlanePos.current.set(e.pointerId, planeXY(e));
++    interaction.onPointerDown(e.pointerId, localXY(e), planeXY(e), e.ray);
++    (e.target as { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId);
++    e.stopPropagation();
++  };
++  const handleMove = (e: ThreeEvent<PointerEvent>) => {
++    const p = planeXY(e);
++    const last = lastPlanePos.current.get(e.pointerId);
++    if (last) {
++      const dx = (p.x - last.x) / pack.size.W;
++      const dy = (p.y - last.y) / pack.size.H;
++      interaction.dragDelta(e.pointerId, dx, dy);
++    }
++    lastPlanePos.current.set(e.pointerId, p);
++    interaction.onPointerMove(e.pointerId, localXY(e), p);
++    e.stopPropagation();
++  };
++  const handleUp = (e: ThreeEvent<PointerEvent>) => {
++    lastPlanePos.current.delete(e.pointerId);
++    interaction.onPointerUp(e.pointerId);
++    e.stopPropagation();
++  };
++  const handleCancel = (e: ThreeEvent<PointerEvent>) => {
++    lastPlanePos.current.delete(e.pointerId);
++    interaction.onPointerCancel(e.pointerId);
++    e.stopPropagation();
++  };
++
++  useFrame((state, rawDt) => {
++    const dt = Math.min(0.05, rawDt);
++    const f = interaction.update(dt);
++    pack.react(dt, f.pullX, f.dragging);
++    pack.setProgress(f.shown);
++    pack.setTime(state.clock.elapsedTime, f.dragging ? 0.5 + f.energy : f.energy);
++    touching.current *= Math.pow(0.05, dt);
++
++    const st = pack.reveal.state;
++    const camera = state.camera as THREE.PerspectiveCamera;
++
++    // ---- fire intensity: strictly tied to how far the reveal has come, per the design's own
++    // want-level table.
++    let want: number;
++    if (!st.running && !st.ready) {
++      want = f.shown * 0.14 + f.energy * 0.05;
++    } else if (st.ready) {
++      want = st.hero >= 0 ? 0.3 : 0.4;
++    } else {
++      const ph = st.phase;
++      want = ph === "stack" || ph === "hold" ? 0.16
++        : ph === "rise" ? 0.2
++          : ph === "separate" || ph === "settle" ? 0.24
++            : ph === "notice" ? 0.3
++              : ph === "approach" ? 0.4 + st.emerge * 0.2
++                : ph === "reveal" ? 0.45 + st.emerge * 0.4
++                  : 0.72;
++    }
++    fire.setLevel(want);
++    const pixHeight = state.size.height * (state.viewport?.dpr ?? 1);
++    const fx = fire.step(dt, camera, pixHeight);
++
++    // the sealed pack's own fire: strong while it's the subject, then hands the heat to the cards
++    const packWant = !st.running && !st.ready
++      ? 0.36 + f.shown * 0.34 + touching.current * 0.12 + f.energy * 0.12
++      : st.ready ? 0.12 : 0.3;
++    packFire.setLevel(packWant);
++    const pfx = packFire.step(dt, camera, pixHeight);
++    if (packLightRef.current) packLightRef.current.intensity = (0.03 + pfx.level * 0.16 + pfx.surge * 0.4) * pfx.flick;
++
++    // the light sweep lands after the mid-emergence hold, before the turn
++    if (st.phase === "reveal" && sweptAt.current < 0 && st.emerge > 0.52) {
++      sweptAt.current = 1; fire.runSweep();
++    }
++
++    // ---- lighting choreography -------------------------------------------------------------
++    const dim = st.dim;
++    const phaseLight = st.hero >= 0 ? 1.35
++      : st.ready ? 1.45
++        : st.running ? 1.3
++          : 2.1 + touching.current * 0.3 + f.shown * 0.3;
++    if (keyRef.current) keyRef.current.intensity += (phaseLight * (1 - dim * 0.34) - keyRef.current.intensity) * Math.min(1, dt * 2.4);
++    const cardWant = st.hero >= 0 ? 0.7 : st.ready ? 0.6 : st.running ? 0.45 : 0;
++    if (cardKeyRef.current) cardKeyRef.current.intensity += (cardWant - cardKeyRef.current.intensity) * Math.min(1, dt * 2.2);
++    if (fillRef.current) fillRef.current.intensity += ((0.4 + fx.level * 0.9) - fillRef.current.intensity) * Math.min(1, dt * 3);
++    if (kickRef.current) kickRef.current.intensity += ((0.24 + f.shown * 0.2 + fx.level * 0.3) - kickRef.current.intensity) * Math.min(1, dt * 3);
++    if (hemiRef.current) hemiRef.current.intensity += ((0.14 + fx.level * 0.16) - hemiRef.current.intensity) * Math.min(1, dt * 3);
++    const spotWant = st.hero >= 0 ? 0.8 : dim > 0.05 ? 2.0 * dim : 0;
++    if (spotRef.current) {
++      spotRef.current.intensity += (spotWant - spotRef.current.intensity) * Math.min(1, dt * 3.2);
++      if (st.hero >= 0) spotRef.current.position.set(0.012, st.focus.y + 0.05, st.focus.z + 0.19);
++      else spotRef.current.position.set(st.focus.x * 0.5 + 0.02, st.focus.y + 0.14, st.focus.z + 0.14);
++    }
++    if (spotTargetRef.current) spotTargetRef.current.position.lerp(st.focus, Math.min(1, dt * 4));
++
++    // fire light rides with the grail card and flickers with the flames
++    const grail = pack.reveal.grailCard;
++    if (grail && fireLightRef.current && emberLightRef.current) {
++      grail.obj.getWorldPosition(wpos.current);
++      fireLightRef.current.position.set(wpos.current.x, wpos.current.y - pack.cardSize.h * 0.3, wpos.current.z + 0.006);
++      emberLightRef.current.position.set(wpos.current.x, wpos.current.y + pack.cardSize.h * 0.4, wpos.current.z - 0.012);
++    }
++    if (fireLightRef.current) fireLightRef.current.intensity = (Math.max(0, fx.level - 0.08) * 0.55 + fx.surge * 1.4) * fx.flick;
++    if (emberLightRef.current) emberLightRef.current.intensity = (Math.max(0, fx.level - 0.12) * 0.2 + fx.surge * 0.5) * fx.flick;
++
++    // ---- camera choreography -----------------------------------------------------------------
++    if (f.orbit) {
++      const target = new THREE.Vector3(0, CENTER_Y, 0);
++      camera.position.set(
++        target.x + f.orbitRadius * Math.sin(f.orbitPhi) * Math.sin(f.orbitTheta),
++        target.y + f.orbitRadius * Math.cos(f.orbitPhi),
++        target.z + f.orbitRadius * Math.sin(f.orbitPhi) * Math.cos(f.orbitTheta)
++      );
++      camera.lookAt(target);
++    } else {
++      if (reframeNext.current) {
++        reframeNext.current = false;
++        if (!introDolly || hasReframedOnce.current) {
++          camera.position.set(0, CENTER_Y + 0.006, BASE_Z);
++          lookAt.current.set(0, CENTER_Y, 0);
++          camera.lookAt(lookAt.current);
++        }
++        camAim.current = { x: 0, y: CENTER_Y + 0.006, z: BASE_Z, tx: 0, ty: CENTER_Y };
++        hasReframedOnce.current = true;
++      }
++      const aspect = state.size.width / state.size.height;
++      const vFovRad = (camera.fov * Math.PI) / 180;
++      const spreadMargin = 1.15;
++      const minSpreadZ = (pack.reveal.spreadWidth * spreadMargin) / (2 * Math.tan(vFovRad / 2) * aspect);
++      const a = camAim.current;
++      if (st.hero >= 0) {
++        const h = pack.reveal.heroCard!.obj.position;
++        a.z = 0.206; a.y = h.y * 0.9; a.x = 0;
++        a.tx = 0; a.ty = h.y * 0.92;
++      } else if (st.phase === "notice" || st.phase === "approach" || st.phase === "reveal" || st.phase === "present") {
++        a.z = Math.max(0.264 - dim * 0.03, minSpreadZ);
++        a.x = st.focus.x * 0.42;
++        a.y = st.focus.y * 0.82 + 0.004;
++        a.tx = st.focus.x * 0.5; a.ty = st.focus.y * 0.88;
++      } else if (st.running || st.ready) {
++        a.z = Math.max(0.262, minSpreadZ); a.x = 0; a.y = CENTER_Y + 0.022; a.tx = 0; a.ty = CENTER_Y + 0.022;
++      } else {
++        a.z = BASE_Z - f.shown * 0.014;
++        a.x = 0;
++        a.y = CENTER_Y + 0.006 + f.shown * 0.012;
++        a.tx = 0; a.ty = CENTER_Y + f.shown * 0.012;
++      }
++      const slow = st.phase === "notice" || st.phase === "approach" || st.phase === "reveal" || st.phase === "present";
++      const sp = Math.min(1, dt * (slow ? 1.1 : 2.6));
++      camera.position.x += (a.x - camera.position.x) * sp;
++      camera.position.y += (a.y - camera.position.y) * sp;
++      camera.position.z += (a.z - camera.position.z) * sp;
++      lookAt.current.set(
++        lookAt.current.x + (a.tx - lookAt.current.x) * sp,
++        lookAt.current.y + (a.ty - lookAt.current.y) * sp,
++        0
++      );
++      camera.lookAt(lookAt.current);
++    }
++
++    // ---- beats: fire's release burst fires once, the instant 'present' starts (the design's
++    // own comment: "contained energy released: one surge, then it settles")
++    if (st.phase !== lastPhase.current) {
++      lastPhase.current = st.phase;
++      if (st.phase === "reveal") sweptAt.current = -1;
++      if (st.phase === "present") fire.burst();
++    }
++
++    // ---- overlay snapshot (throttled to real changes) ---------------------------------------
++    if (onSnapshot) {
++      const heroCard = pack.reveal.heroCard;
++      const labelCard = heroCard ?? (st.phase === "present" ? grail : null);
++      const fireLevel = Math.max(fx.level, pfx.level * 0.85);
++      const changed = !lastSnapshot.current
++        || lastSnapshot.current.phase !== st.phase
++        || lastSnapshot.current.hero !== st.hero
++        || lastSnapshot.current.ready !== st.ready
++        || Math.abs(lastSnapshot.current.dim - dim) > 0.02
++        || Math.abs(lastSnapshot.current.shown - f.shown) > 0.01
++        || Math.abs(lastSnapshot.current.fireLevel - fireLevel) > 0.02
++        || Math.abs(lastSnapshot.current.surge - fx.surge) > 0.05;
++      if (changed) {
++        const snap: BlackLabelStateSnapshot = {
++          phase: st.phase, hero: st.hero, ready: st.ready, running: st.running, dim, shown: f.shown,
++          fireLevel, surge: fx.surge,
++          heroLabel: labelCard ? {
++            rarity: labelCard.data.rarityLabel, edition: labelCard.data.edition, name: labelCard.data.name,
++            value: labelCard.data.value, serial: labelCard.data.serial,
++            tagline: labelCard.data.tagline ?? "", type: labelCard.data.type ?? "",
++            traitsRaw: null,
++          } : null,
++        };
++        lastSnapshot.current = snap;
++        onSnapshot(snap);
++      }
++    }
++  });
++
++  const floorY = -pack.size.H / 2;
++
++  return (
++    <>
++      <hemisphereLight ref={hemiRef} args={[personality.lighting.hemiSky, personality.lighting.hemiGround, 0.4]} />
++      <directionalLight ref={keyRef} color={personality.lighting.key} intensity={2.1} position={[0.17, 0.3, 0.3]} castShadow />
++      <directionalLight ref={fillRef} color={0x8c2408} intensity={0.9} position={[-0.3, 0.1, -0.2]} />
++      <directionalLight ref={emberRimRef} color={personality.lighting.rim} intensity={1.15} position={[0.06, -0.16, 0.34]} />
++      <directionalLight ref={kickRef} color={0xd8b877} intensity={0.5} position={[-0.16, -0.08, 0.26]} />
++      <directionalLight ref={cardKeyRef} color={0xfff4e2} intensity={0} position={[0.05, 0.14, 0.42]} />
++      <spotLight
++        ref={spotRef}
++        color={personality.lighting.spot}
++        intensity={0}
++        distance={0.6}
++        angle={0.5}
++        penumbra={0.92}
++        decay={1.2}
++        position={[0.02, 0.16, 0.16]}
++      />
++      <object3D ref={spotTargetRef} position={[0, 0, 0]} />
++      <pointLight ref={fireLightRef} color={0xff6a18} intensity={0} distance={0.22} decay={2.2} />
++      <pointLight ref={emberLightRef} color={0xff9330} intensity={0} distance={0.2} decay={2.0} />
++      <pointLight ref={packLightRef} color={0xff6a18} intensity={0} distance={0.18} decay={2.4} position={[0.035, -pack.size.H * 0.06, 0.055]} />
++
++      <mesh rotation-x={-Math.PI / 2} position={[0, floorY - 0.0004, 0]} receiveShadow>
++        <planeGeometry args={[0.66, 0.66]} />
++        <meshStandardMaterial name="apexFloor" color={0x040407} roughness={0.62} metalness={0.36} />
++      </mesh>
++      <mesh position={[0, floorY + 0.25, -0.28]}>
++        <planeGeometry args={[0.98, 0.66]} />
++        <meshStandardMaterial name="apexWall" color={0x030306} roughness={0.95} metalness={0.04} />
++      </mesh>
++
++      <primitive object={pack.group} />
++
++      {/* See ../../vaultReveal/scene/VaultScene.tsx's own comment on why this plane is
++          deliberately NOT a child of pack.group. */}
++      <mesh
++        position={[0, CENTER_Y, pack.size.T * 3]}
++        onPointerDown={handleDown}
++        onPointerMove={handleMove}
++        onPointerUp={handleUp}
++        onPointerCancel={handleCancel}
++      >
++        <planeGeometry args={[pack.size.W * 6, pack.size.H * 3]} />
++        <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={false} />
++      </mesh>
++    </>
++  );
++}));
+diff --git a/app/src/engine/cards/vaultReveal/art/cardArt.ts b/app/src/engine/cards/vaultReveal/art/cardArt.ts
+index 60af26c..6c56c94 100644
+--- a/app/src/engine/cards/vaultReveal/art/cardArt.ts
++++ b/app/src/engine/cards/vaultReveal/art/cardArt.ts
+@@ -5,15 +5,31 @@
+ // Kept generic to real per-item data rather than the prototype's own hardcoded fictional demo
+ // deck: the ribbon draws `card.rarityLabel` (the real, admin-configurable rarity tier name)
+ // instead of a fixed CORE/PRIME/GRAIL string; `rarity` (CORE/PRIME/GRAIL) still selects the
+-// ribbon's styling by ordinal tier. Not currently exercised with real content — the app's
+-// integration (VaultTearStage.tsx) only ever calls buildVaultPackObject with an empty deck, the
+-// staged card-fan reveal this file's art was for having moved to a separate, flat-2D screen
+-// (see VaultTearStage.tsx's header) — but this stayed correct/reusable rather than deleted.
++// ribbon's styling by ordinal tier.
++//
++// Extended for Black Label's fire-themed cards (per the actual Claude Design handoff, which
++// generalized this same file rather than forking it — see its own "Theme hooks" comment on
++// drawCardFace): `card.stock`/`ribbon`/`accent`/`accentRGB` let a tier restyle the card frame
++// without a second layout, `card.windowArt` picks which abstract art fills the art window
++// (`'pyro'` for Black Label's molten rift, default `'vault'` for everyone else — a string
++// discriminant rather than a function reference on the data object, since VaultCardData is
++// otherwise plain data), and `drawCardVerso`/`drawCardVersoImage` now take an optional `theme` for
++// the same reason. Vault Break's own cards pass none of this and get the original look
++// unchanged.
++//
++// `windowArt: 'vault'` was, for a while, the only path actually exercised — the app's
++// integration briefly ran buildVaultPackObject with an empty deck while the staged card-fan
++// reveal moved to its own flat-2D screen (see vaultReveal/VaultTearStage.tsx's header) — but
++// both tiers' flat-2D fan screens (VaultCardFanReveal.tsx / blackLabelReveal's
++// BlackLabelFanReveal.tsx) call drawCardFaceImage directly with real pulled-item data now, so
++// this is live code again, not a kept-for-reuse fallback.
+ import {
+   Skia,
+   ClipOp,
+   PaintStyle,
+   TileMode,
++  StrokeCap,
++  BlurStyle,
+   type SkCanvas,
+   type SkImage,
+ } from "@shopify/react-native-skia";
+@@ -121,6 +137,106 @@ function cardWindowArt(canvas: SkCanvas, x: number, y: number, w: number, h: num
+   canvas.restore();
+ }
+ 
++// Black Label's art window: a molten rift opening in obsidian — heat gathers at the base, a
++// fracture climbs the frame, embers leave it. Abstract on purpose, same as cardWindowArt above —
++// the reveal engine never depends on a particular subject.
++function pyroWindowArt(canvas: SkCanvas, x: number, y: number, w: number, h: number, card: VaultCardData) {
++  const r = rng(card.seed);
++  canvas.save();
++  canvas.clipPath(roundRectPath(x, y, w, h, 8), ClipOp.Intersect, true);
++
++  canvas.drawRect(Skia.XYWHRect(x, y, w, h), linearGradientPaint(x, y, x + w * 0.3, y + h, [
++    [0, "#08070c"], [0.55, card.tint], [1, "#040305"],
++  ]));
++
++  const cx = x + w / 2, base = y + h * 0.92;
++
++  const pool = Skia.Paint();
++  pool.setShader(Skia.Shader.MakeRadialGradient(
++    Skia.Point(cx, base), w * 0.95,
++    [Skia.Color(`rgba(${card.glowRGB},0.34)`), Skia.Color("rgba(255,110,30,0.12)"), Skia.Color("rgba(0,0,0,0)")],
++    [0, 0.35, 1], TileMode.Clamp
++  ));
++  canvas.drawRect(Skia.XYWHRect(x, y, w, h), pool);
++
++  const facetPaint = fillPaint("#ffffff");
++  const facetStroke = strokePaint("rgba(216,184,119,0.08)", 1);
++  for (let i = 0; i < 26; i++) {
++    const px = x + r() * w, py = y + r() * h;
++    const sz = 16 + r() * 54;
++    const facet = Skia.Path.Make();
++    facet.moveTo(px, py); facet.lineTo(px + sz * (0.4 + r()), py + sz * 0.5);
++    facet.lineTo(px + sz * 0.2, py + sz); facet.close();
++    const heat = Math.max(0, 1 - (py - y) / h);
++    facetPaint.setColor(Skia.Color(`rgba(255,${130 + Math.floor(r() * 90)},${50 + Math.floor(r() * 40)},1)`));
++    facetPaint.setAlphaf(0.03 + heat * 0.07);
++    canvas.drawPath(facet, facetPaint);
++    facetStroke.setAlphaf(0.05 + r() * 0.09);
++    canvas.drawPath(facet, facetStroke);
++  }
++
++  // the fracture: a molten line climbing the frame with hot branches
++  const branch = (x0: number, y0: number, x1: number, y1: number, wid: number, alpha: number) => {
++    const path = Skia.Path.Make();
++    path.moveTo(x0, y0);
++    const steps = 14;
++    for (let i = 1; i <= steps; i++) {
++      const t = i / steps;
++      const nx = x0 + (x1 - x0) * t + Math.sin(t * 9 + card.seed) * w * 0.035 * (1 - t);
++      const ny = y0 + (y1 - y0) * t;
++      path.lineTo(nx, ny);
++    }
++    const paint = strokePaint(`rgba(255,236,200,${alpha})`, wid);
++    paint.setStrokeCap(StrokeCap.Round);
++    paint.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, wid * 2, true));
++    canvas.drawPath(path, paint);
++  };
++  branch(cx + w * 0.02, base, cx - w * 0.04, y + h * 0.12, 2.6, 0.85);
++  branch(cx + w * 0.02, y + h * 0.62, cx + w * 0.26, y + h * 0.3, 1.4, 0.45);
++  branch(cx - w * 0.03, y + h * 0.5, cx - w * 0.28, y + h * 0.26, 1.2, 0.4);
++
++  for (let i = 5; i >= 1; i--) {
++    canvas.drawArc(
++      Skia.XYWHRect(cx - i * w * 0.13, base - i * w * 0.13, i * w * 0.26, i * w * 0.26),
++      180, 180, false,
++      strokePaint(`rgba(216,184,119,${0.04 + i * 0.026})`, 1.2 + i * 0.4)
++    );
++  }
++
++  guilloche(canvas, cx, y + h * 0.44, { r: w * 0.4, lobes: 9, lines: 12, turns: 4, stroke: "rgba(216,184,119,0.05)" });
++
++  const emberPaint = fillPaint("#ffb765");
++  for (let i = 0; i < 60; i++) {
++    const px = cx + (r() - 0.5) * w * 0.9, py = y + r() * h;
++    const heat = Math.max(0, 1 - (py - y) / h);
++    emberPaint.setColor(Skia.Color(i % 6 ? (i % 3 ? "#ffb765" : "#ff6a18") : "#fff3dd"));
++    emberPaint.setAlphaf(0.1 + r() * 0.36 * (0.3 + heat));
++    const sz = 1 + (i % 5 === 0 ? 1.4 : 0);
++    canvas.drawRect(Skia.XYWHRect(px, py, sz, sz), emberPaint);
++  }
++
++  const smokePaint = Skia.Paint();
++  smokePaint.setShader(Skia.Shader.MakeLinearGradient(
++    Skia.Point(0, y), Skia.Point(0, y + h * 0.4),
++    [Skia.Color("rgba(16,12,10,0.72)"), Skia.Color("rgba(16,12,10,0)")],
++    null, TileMode.Clamp
++  ));
++  canvas.drawRect(Skia.XYWHRect(x, y, w, h * 0.4), smokePaint);
++
++  ([[x, y], [x + w, y], [x, y + h], [x + w, y + h]] as const).forEach(([px, py]) => {
++    const paint = Skia.Paint();
++    paint.setShader(Skia.Shader.MakeRadialGradient(
++      Skia.Point(px, py), w * 0.6,
++      [Skia.Color("rgba(0,0,0,0.66)"), Skia.Color("rgba(0,0,0,0)")],
++      null, TileMode.Clamp
++    ));
++    canvas.drawRect(Skia.XYWHRect(x, y, w, h), paint);
++  });
++
++  hairlines(canvas, x, y, w, h, { step: 4, angle: -0.5, alpha: 0.03 });
++  canvas.restore();
++}
++
+ function sparkline(canvas: SkCanvas, x: number, y: number, w: number, h: number, series: number[], up: boolean) {
+   const min = Math.min(...series), max = Math.max(...series);
+   const sx = (i: number) => x + (i / (series.length - 1)) * w;
+@@ -145,18 +261,25 @@ function sparkline(canvas: SkCanvas, x: number, y: number, w: number, h: number,
+ 
+ function paintCardFace(canvas: SkCanvas, card: VaultCardData) {
+   const rar = RARITY[card.rarity];
++  // Theme hooks: a card may carry its own stock, ribbon and accent so a tier can restyle the
++  // object without forking the layout — see this file's header.
++  const stock = card.stock ?? ["#150a28", "#241041", "#0b0518"];
++  const ribbon = card.ribbon ?? rar.ribbon;
++  const acc = card.accent ?? CH_C;
++  const accRGB = card.accentRGB ?? "232,207,162";
++  const windowArt = card.windowArt === "pyro" ? pyroWindowArt : cardWindowArt;
+ 
+   canvas.drawRect(Skia.XYWHRect(0, 0, CW, CH), linearGradientPaint(0, 0, CW, CH, [
+-    [0, "#150a28"], [0.5, "#241041"], [1, "#0b0518"],
++    [0, stock[0]], [0.5, stock[1]], [1, stock[2]],
+   ]));
+   hairlines(canvas, 0, 0, CW, CH, { step: 6, angle: -0.4, alpha: 0.035 });
+ 
+-  canvas.drawRect(Skia.XYWHRect(3, 3, CW - 6, CH - 6), strokePaint(rar.ribbon[1], 5 + rar.glow * 2));
+-  canvas.drawRect(Skia.XYWHRect(11, 11, CW - 22, CH - 22), strokePaint("rgba(244,236,224,0.26)", 0.7));
++  canvas.drawRect(Skia.XYWHRect(3, 3, CW - 6, CH - 6), strokePaint(ribbon[1], 5 + rar.glow * 2));
++  canvas.drawRect(Skia.XYWHRect(11, 11, CW - 22, CH - 22), strokePaint(`rgba(${accRGB},0.26)`, 0.7));
+ 
+   const rx = 20, ry = 21, rw = CW - 40, rh = 19;
+   canvas.drawRect(Skia.XYWHRect(rx, ry, rw, rh), linearGradientPaint(rx, 0, rx + rw, 0, [
+-    [0, rar.ribbon[0]], [0.5, rar.ribbon[1]], [1, rar.ribbon[2]],
++    [0, ribbon[0]], [0.5, ribbon[1]], [1, ribbon[2]],
+   ]));
+   canvas.drawRect(Skia.XYWHRect(rx, ry, rw, rh), strokePaint("rgba(0,0,0,0.5)", 0.5));
+   drawTrackedText(canvas, `${card.rarityLabel} · ${card.edition}`, rx + rw / 2, ry + 13, {
+@@ -171,12 +294,11 @@ function paintCardFace(canvas: SkCanvas, card: VaultCardData) {
+   });
+ 
+   // Every pulled item that has a real catalog photo shows that instead of this raster entirely
+-  // (see VaultCardFanReveal) — this whole face, abstract art window included, is now only the
+-  // fallback for the rare item with no texture, so it stays the original full design rather than
+-  // a stripped-down variant of it.
++  // (see VaultCardFanReveal / BlackLabelFanReveal) — this whole face, abstract art window
++  // included, is only the fallback for an item with no texture.
+   const ax = 24, ay = 106, aw = CW - 48, ah = 186;
+-  cardWindowArt(canvas, ax, ay, aw, ah, card);
+-  canvas.drawPath(roundRectPath(ax, ay, aw, ah, 8), strokePaint("rgba(232,207,162,0.5)", 1));
++  windowArt(canvas, ax, ay, aw, ah, card);
++  canvas.drawPath(roundRectPath(ax, ay, aw, ah, 8), strokePaint(`rgba(${accRGB},0.5)`, 1));
+ 
+   const vy = ay + ah + 15;
+   const vh = 74;
+@@ -195,9 +317,17 @@ function paintCardFace(canvas: SkCanvas, card: VaultCardData) {
+     size: 6, bold: true, mono: true, letterSpacing: 2, fill: "rgba(244,236,224,0.38)", align: "right",
+   });
+   sparkline(canvas, CW - 125, vy + 35, 90, 20, card.spark, up);
+-  drawTrackedText(canvas, card.held, 35, vy + 64, {
+-    size: 6.5, bold: true, mono: true, letterSpacing: 1.5, fill: "rgba(244,236,224,0.38)", align: "left",
+-  });
++  // A tagline (Black Label's Grail card, per the design) replaces the held-since line rather
++  // than sharing the row with it — same slot, mutually exclusive content.
++  if (card.tagline) {
++    drawTrackedText(canvas, `“${card.tagline}”`, CW / 2, vy + 64, {
++      size: 10.5, italic: true, fill: `rgba(${accRGB},0.82)`,
++    });
++  } else {
++    drawTrackedText(canvas, card.held, 35, vy + 64, {
++      size: 6.5, bold: true, mono: true, letterSpacing: 1.5, fill: "rgba(244,236,224,0.38)", align: "left",
++    });
++  }
+ 
+   const fy = CH - 25;
+   const rule = Skia.Path.Make();
+@@ -209,9 +339,9 @@ function paintCardFace(canvas: SkCanvas, card: VaultCardData) {
+   drawTrackedText(canvas, card.serial, CW - 24, fy, {
+     size: 7, bold: true, mono: true, letterSpacing: 1.5, fill: "rgba(244,236,224,0.44)", align: "right",
+   });
+-  canvas.drawCircle(CW / 2, fy - 3, 7.5, strokePaint(CH_C, 1));
+-  canvas.drawCircle(CW / 2, fy - 3, 5.5, strokePaint("rgba(232,207,162,0.34)", 0.5));
+-  drawTrackedText(canvas, "✓", CW / 2, fy, { size: 7.5, bold: true, fill: CH_C });
++  canvas.drawCircle(CW / 2, fy - 3, 7.5, strokePaint(acc, 1));
++  canvas.drawCircle(CW / 2, fy - 3, 5.5, strokePaint(`rgba(${accRGB},0.34)`, 0.5));
++  drawTrackedText(canvas, "✓", CW / 2, fy, { size: 7.5, bold: true, fill: acc });
+ }
+ 
+ export function drawCardFace(card: VaultCardData): PixelImage {
+@@ -229,18 +359,33 @@ export function drawCardFaceImage(card: VaultCardData): SkImage {
+   return surf.toImage();
+ }
+ 
+-// Shared card verso — collector artifact, no per-card data.
+-function paintCardVerso(canvas: SkCanvas) {
++export interface CardVersoTheme {
++  stock?: [string, string, string];
++  band?: string;
++  accRGB?: string;
++  second?: string;
++  line1?: string;
++  line2?: string;
++}
++
++// Shared card verso — collector artifact, no per-card data. `theme` lets a tier restyle the
++// substrate without a second layout (see this file's header).
++function paintCardVerso(canvas: SkCanvas, theme: CardVersoTheme = {}) {
++  const {
++    stock = ["#100722", "#1f0f3a", "#08040f"], band = "#6f5a2c",
++    accRGB = "232,207,162", second = "170,132,246",
++    line1 = "VAULT BREAK · SERIES I", line2 = "THE COLLECTOR'S VAULT",
++  } = theme;
+   canvas.drawRect(Skia.XYWHRect(0, 0, CW, CH), linearGradientPaint(0, 0, CW, CH, [
+-    [0, "#100722"], [0.5, "#1f0f3a"], [1, "#08040f"],
++    [0, stock[0]], [0.5, stock[1]], [1, stock[2]],
+   ]));
+   hairlines(canvas, 0, 0, CW, CH, { step: 5, angle: 0.42, alpha: 0.04 });
+ 
+-  canvas.drawRect(Skia.XYWHRect(3, 3, CW - 6, CH - 6), strokePaint("#6f5a2c", 5));
+-  canvas.drawRect(Skia.XYWHRect(12, 12, CW - 24, CH - 24), strokePaint("rgba(232,207,162,0.2)", 0.6));
++  canvas.drawRect(Skia.XYWHRect(3, 3, CW - 6, CH - 6), strokePaint(band, 5));
++  canvas.drawRect(Skia.XYWHRect(12, 12, CW - 24, CH - 24), strokePaint(`rgba(${accRGB},0.2)`, 0.6));
+ 
+-  guilloche(canvas, CW / 2, CH * 0.46, { r: 107, lobes: 12, lines: 24, stroke: "rgba(232,207,162,0.11)" });
+-  guilloche(canvas, CW / 2, CH * 0.46, { r: 56, lobes: 6, lines: 14, turns: 3, stroke: "rgba(170,132,246,0.12)" });
++  guilloche(canvas, CW / 2, CH * 0.46, { r: 107, lobes: 12, lines: 24, stroke: `rgba(${accRGB},0.11)` });
++  guilloche(canvas, CW / 2, CH * 0.46, { r: 56, lobes: 6, lines: 14, turns: 3, stroke: `rgba(${second},0.12)` });
+ 
+   canvas.save();
+   canvas.translate(CW / 2, CH * 0.46);
+@@ -265,24 +410,24 @@ function paintCardVerso(canvas: SkCanvas) {
+   drawTrackedText(canvas, "COLLECTOR CARD GAME", CW / 2, 79, {
+     size: 6.5, bold: true, mono: true, letterSpacing: 3, fill: "rgba(244,236,224,0.5)",
+   });
+-  drawTrackedText(canvas, "VAULT BREAK · SERIES I", CW / 2, CH - 74, {
+-    size: 7.5, bold: true, mono: true, letterSpacing: 3.5, fill: "rgba(232,207,162,0.62)",
++  drawTrackedText(canvas, line1, CW / 2, CH - 74, {
++    size: 7.5, bold: true, mono: true, letterSpacing: 3.5, fill: `rgba(${accRGB},0.62)`,
+   });
+   microBlock(canvas, CW / 2 - 60, CH - 61, 120, 4, { rowH: 4, alpha: 0.18 });
+-  drawTrackedText(canvas, "THE COLLECTOR'S VAULT", CW / 2, CH - 29, {
++  drawTrackedText(canvas, line2, CW / 2, CH - 29, {
+     size: 6, bold: true, mono: true, letterSpacing: 2.5, fill: "rgba(244,236,224,0.34)",
+   });
+ }
+ 
+-export function drawCardVerso(): PixelImage {
++export function drawCardVerso(theme: CardVersoTheme = {}): PixelImage {
+   const surf = makeSurface(CW, CH);
+-  paintCardVerso(surf.canvas);
++  paintCardVerso(surf.canvas, theme);
+   return { data: surf.toRGBA(), width: CW, height: CH };
+ }
+ 
+ /** Same verso art as drawCardVerso, snapshotted as a displayable SkImage. */
+-export function drawCardVersoImage(): SkImage {
++export function drawCardVersoImage(theme: CardVersoTheme = {}): SkImage {
+   const surf = makeSurface(CW, CH);
+-  paintCardVerso(surf.canvas);
++  paintCardVerso(surf.canvas, theme);
+   return surf.toImage();
+ }
+diff --git a/app/src/engine/cards/vaultReveal/config/types.ts b/app/src/engine/cards/vaultReveal/config/types.ts
+index 01e1902..29a2bfe 100644
+--- a/app/src/engine/cards/vaultReveal/config/types.ts
++++ b/app/src/engine/cards/vaultReveal/config/types.ts
+@@ -118,6 +118,26 @@ export interface VaultCardData {
+   serial: string;
+   held: string;
+   spark: number[];
++
++  // Optional theme hooks — see art/cardArt.ts's header. Vault Break's real-data adapter
++  // (engine/adaptRealDeck.ts) leaves all of these undefined and gets the original look; Black
++  // Label's (../../blackLabelReveal/engine/adaptBlackLabelDeck.ts) sets them.
++  /** Card-stock background gradient, top/mid/bottom. */
++  stock?: [string, string, string];
++  /** Rarity-ribbon gradient, overriding the ordinal-rarity default. */
++  ribbon?: [string, string, string];
++  accent?: string;
++  accentRGB?: string;
++  /** Which abstract art window function fills the card's art window when no real catalog photo
++   * exists — 'vault' (default) or 'pyro'. */
++  windowArt?: "vault" | "pyro";
++  /** Replaces the held-since line with an italic pull-quote (Black Label's Grail card, per the
++   * design) — the two are mutually exclusive, not stacked. */
++  tagline?: string;
++  /** Shown as bordered chips in the flat-2D fan reveal's inspect sheet. */
++  traits?: string[];
++  /** Free-text category shown in the inspect sheet's meta line (e.g. "Fire"). */
++  type?: string;
+ }
+ 
+ export interface HapticTrackConfig {
+diff --git a/app/src/engine/cards/vaultReveal/engine/buildReveal.ts b/app/src/engine/cards/vaultReveal/engine/buildReveal.ts
+index 1850f38..c433eab 100644
+--- a/app/src/engine/cards/vaultReveal/engine/buildReveal.ts
++++ b/app/src/engine/cards/vaultReveal/engine/buildReveal.ts
+@@ -37,6 +37,9 @@ export interface RevealState {
+   grailShown: boolean;
+   running: boolean;
+   started: boolean;
++  /** 0..1 progress through just the 'approach'/'reveal' phases, 0 elsewhere — see step()'s own
++   * comment on where this is written. */
++  emerge: number;
+ }
+ 
+ export interface BuildRevealOpts {
+@@ -128,7 +131,7 @@ export function buildReveal(opts: BuildRevealOpts) {
+   // ---- phase machine ----------------------------------------------------
+   const state: RevealState = {
+     phase: "idle", dim: 0, focus: new THREE.Vector3(0, restY, 0),
+-    hero: -1, ready: false, grailShown: false, running: false, started: false,
++    hero: -1, ready: false, grailShown: false, running: false, started: false, emerge: 0,
+   };
+   const seq: [RevealPhase, number][] = grailIdx >= 0
+     ? [["stack", timing.stack], ["hold", timing.hold], ["rise", timing.rise],
+@@ -252,6 +255,13 @@ export function buildReveal(opts: BuildRevealOpts) {
+             : state.phase === "ready" ? 0.34 : 0;
+     state.dim += (dimTarget - state.dim) * Math.min(1, dt * 3.4);
+ 
++    // 0..1 progress through just the approach/reveal beats — Black Label's fire
++    // (blackLabelReveal/scene/BlackLabelScene.tsx) ramps its want-level against this so the
++    // burn visibly builds through those two phases instead of stepping between fixed levels.
++    state.emerge = state.phase === "approach" ? ease(clamp(phaseT / timing.approach))
++      : state.phase === "reveal" ? ease(clamp(phaseT / timing.reveal))
++        : 0;
++
+     cards.forEach((c) => {
+       target(c, tmp);
+       const k = c.index === state.hero ? 52 : 34, damp = 2 * Math.sqrt(k) * 0.82;
+@@ -326,7 +336,7 @@ export function buildReveal(opts: BuildRevealOpts) {
+ 
+   const reset = () => {
+     state.phase = "idle"; state.running = false; state.started = false; state.ready = false;
+-    state.hero = -1; state.grailShown = false; state.dim = 0;
++    state.hero = -1; state.grailShown = false; state.dim = 0; state.emerge = 0;
+     si = -1; phaseT = 0;
+     cards.forEach((c) => {
+       c.p.set(0, restY, (c.slot - (n - 1) / 2) * 0.0002);
+@@ -345,6 +355,11 @@ export function buildReveal(opts: BuildRevealOpts) {
+     group, cards, state, start, step, pick, setHero, dragHero, endDrag,
+     zoomHero, flipHero, reset, dispose, spreadWidth,
+     get heroCard() { return state.hero >= 0 ? cards[state.hero] : null; },
++    /** Black Label's fire (BlackLabelScene.tsx) parents itself to whichever card isGrail — a
++     * lookup, not a stored index, since deck order (and so which card is the Grail) never
++     * changes after buildReveal() is constructed. Null for a Grail-less deck (see grailIdx above
++     * — cardCount < the slot table's assumptions, or a pull with no Grail-rarity item). */
++    get grailCard() { return cards.find((c) => c.isGrail) ?? null; },
+   };
+ }
+ 
+diff --git a/app/src/engine/cards/vaultReveal/engine/buildVaultPackObject.ts b/app/src/engine/cards/vaultReveal/engine/buildVaultPackObject.ts
+index 1e31a64..173058a 100644
+--- a/app/src/engine/cards/vaultReveal/engine/buildVaultPackObject.ts
++++ b/app/src/engine/cards/vaultReveal/engine/buildVaultPackObject.ts
+@@ -28,6 +28,10 @@ const REVEAL_PHASES_LINER_HIDDEN = new Set<RevealPhase>([
+ export interface BuiltVaultPack {
+   group: THREE.Group;
+   size: { W: number; H: number; T: number };
++  /** Individual card width/height, same units as `size` — Black Label's fire
++   * (blackLabelReveal/art/fire.ts's buildFire) sizes itself off this, matching how the design's
++   * own script reads `pack.cardSize`/`reveal.cardSize`. */
++  cardSize: { w: number; h: number };
+   seamY: number;
+   reveal: BuiltReveal;
+   setProgress: (p: number) => void;
+@@ -505,5 +509,8 @@ export function buildVaultPackObject(
+   };
+ 
+   setProgress(0);
+-  return { group, size: { W, H, T }, seamY, reveal, setProgress, setStretch, setTime, react, dispose };
++  return {
++    group, size: { W, H, T }, cardSize: { w: cw, h: ch }, seamY, reveal,
++    setProgress, setStretch, setTime, react, dispose,
++  };
+ }

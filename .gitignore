@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.local
+
+# Expo
+app/.expo/
+app/dist/
+app/ios/
+app/android/
+*.tsbuildinfo
+
+# Server
+server/dist/
+
+# macOS
+.DS_Store

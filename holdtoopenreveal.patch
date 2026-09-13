@@ -1,0 +1,2423 @@
+diff --git a/app/src/engine/cards/CardFlowEngine.tsx b/app/src/engine/cards/CardFlowEngine.tsx
+index 4aaa799..17d6d5d 100644
+--- a/app/src/engine/cards/CardFlowEngine.tsx
++++ b/app/src/engine/cards/CardFlowEngine.tsx
+@@ -4,14 +4,6 @@ import { Image } from "expo-image";
+ import { LinearGradient } from "expo-linear-gradient";
+ import { Canvas, useFrame } from "@react-three/fiber/native";
+ import type { DirectionalLight } from "three";
+-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+-import Animated, {
+-  runOnJS,
+-  useAnimatedStyle,
+-  useSharedValue,
+-  withSpring,
+-  withTiming,
+-} from "react-native-reanimated";
+ import type { ItemDetail, PackSku } from "@grailhaus/shared";
+ import { usePackFlowStore } from "../../state/packFlowStore";
+ import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
+@@ -22,6 +14,7 @@ import type { CategoryRevealConfig } from "../core/types";
+ import { PackTearMesh } from "./reveal/PackTearMesh";
+ import { PackTear2D } from "./reveal/PackTear2D";
+ import { cardPackPersonality } from "./reveal/config/cardPack.config";
++import { CardPackFanReveal } from "./reveal/CardPackFanReveal";
+ import { playHapticTrack } from "../core/HapticsTrack";
+ import { PackFace } from "../../components/PackFace";
+ import { ProgressRing } from "../../components/ProgressRing";
+@@ -30,7 +23,7 @@ import { ART_GRADIENT, tierLabel } from "../../components/PackTile";
+ import { accents, fonts, ink, spacing } from "../../theme/tokens";
+ import { cardFlow as copy } from "../../content/copy";
+ 
+-type Step = "processing" | "ready" | "introduction" | "card" | "final" | "summary";
++type Step = "processing" | "ready" | "introduction" | "cards" | "summary";
+ 
+ const PROCESSING_DURATION_MS = 2000;
+ 
+@@ -46,10 +39,14 @@ export interface BatchContext {
+ 
+ /**
+  * The Cards journey's post-payment flow: Processing → Ready → Introduction →
+- * per-card 2D swipe reveal → hold-to-reveal on the final (rarest) card →
+- * Pack Complete summary. Replaces `RevealEngine`'s cards branch. Keeps the
+- * 3D `CardMesh` + `GestureLayer` for exactly one beat — the pack tear in
+- * Introduction — everything else here is flat 2D per the newer mockup.
++ * press-and-hold-per-card fan reveal → Pack Complete summary. Replaces
++ * `RevealEngine`'s cards branch. Keeps the 3D `CardMesh` + `GestureLayer` for
++ * exactly one beat — the pack tear in Introduction — everything else here is
++ * flat 2D. The card reveal itself (CardPackFanReveal, in ./reveal/) is the
++ * same shared engine Vault Break and Black Label use for their own post-tear
++ * reveal (see reveal/holdToOpen/HoldToOpenFanReveal.tsx) — every tier now
++ * reveals its cards the same deliberate way, only the pack tear before it and
++ * the card art itself differ per tier.
+  *
+  * Also the engine a bulk (10-pack) batch runs, one pack at a time — `batchContext`/`onNextPack`
+  * are the only things that change for that case (see RevealScreen, which mounts a fresh instance
+@@ -110,7 +107,6 @@ export function CardFlowEngine({
+     resumedToSummary ? "summary" : skipProcessing ? "ready" : "processing"
+   );
+   const [visibleStatusRows, setVisibleStatusRows] = useState(0);
+-  const [cardIndex, setCardIndex] = useState(0);
+   const tearCompleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+ 
+   useEffect(() => () => {
+@@ -169,20 +165,11 @@ export function CardFlowEngine({
+     // which read as "nothing lands." 2500ms comfortably covers a full multi-bounce settle.
+     playHapticTrack(config.hapticTrack("opening", false));
+     tearCompleteTimer.current = setTimeout(() => {
+-      setStep("card");
+-      setCardIndex(0);
++      setStep("cards");
+     }, 2500);
+   }
+ 
+-  function handleAdvanceCard() {
+-    if (cardIndex + 1 >= orderedItems.length) {
+-      setStep("final");
+-    } else {
+-      setCardIndex((i) => i + 1);
+-    }
+-  }
+-
+-  function handleFinalRevealed() {
++  function handleCardsDone() {
+     setStep("summary");
+     setPhase("summary");
+   }
+@@ -212,39 +199,8 @@ export function CardFlowEngine({
+     return <IntroductionView sku={sku} gesture={config.gesture} onTearComplete={handleTearComplete} />;
+   }
+ 
+-  if (step === "card" || step === "final") {
+-    const item = step === "final" ? orderedItems[orderedItems.length - 1] : orderedItems[cardIndex];
+-    const priorCount = priorCountById.get(item.id) ?? 0;
+-    const occurrenceSoFar = orderedItems.slice(0, cardIndex + 1).filter((i) => i.id === item.id).length;
+-    const holdCount = priorCount + occurrenceSoFar;
+-    const runningTotalCents = orderedItems.slice(0, cardIndex + 1).reduce((sum, i) => sum + i.baseValueCents, 0);
+-    const tier = sku.rarityTiers.find((t) => t.level === item.rarityTierLevel) ?? null;
+-
+-    return step === "final" ? (
+-      <FinalCardView
+-        item={item}
+-        tier={tier}
+-        holdCount={holdCount}
+-        total={orderedItems.length}
+-        onRevealed={handleFinalRevealed}
+-      />
+-    ) : (
+-      // Keyed by index so each card gets a fresh mount — CardView's own `translateX` shared
+-      // value ends a swipe at -500 (off-screen) and never resets on its own; without a key
+-      // change here, advancing to the next card reuses the same instance and that same
+-      // already-off-screen position, rendering a "blank" card that's actually just invisible.
+-      <CardView
+-        key={cardIndex}
+-        item={item}
+-        tier={tier}
+-        index={cardIndex}
+-        total={orderedItems.length}
+-        holdCount={holdCount}
+-        isNew={holdCount === 1}
+-        runningTotalCents={runningTotalCents}
+-        onAdvance={handleAdvanceCard}
+-      />
+-    );
++  if (step === "cards") {
++    return <CardPackFanReveal items={orderedItems} sku={sku} onDone={handleCardsDone} />;
+   }
+ 
+   // "summary"
+@@ -435,177 +391,6 @@ function IntroductionView({
+   );
+ }
+ 
+-export function CardView({
+-  item,
+-  tier,
+-  index,
+-  total,
+-  holdCount,
+-  isNew,
+-  runningTotalCents,
+-  onAdvance,
+-}: {
+-  item: ItemDetail;
+-  tier: { colorHex: string; name: string } | null;
+-  index: number;
+-  total: number;
+-  holdCount: number;
+-  isNew: boolean;
+-  runningTotalCents: number;
+-  onAdvance: () => void;
+-}) {
+-  const translateX = useSharedValue(0);
+-  const color = tier?.colorHex ?? ink.textMuted;
+-
+-  const pan = Gesture.Pan()
+-    .onUpdate((e) => {
+-      "worklet";
+-      translateX.value = Math.min(0, e.translationX);
+-    })
+-    .onEnd((e) => {
+-      "worklet";
+-      if (e.translationX < -80 || e.velocityX < -600) {
+-        translateX.value = withTiming(-500, { duration: 220 }, () => runOnJS(onAdvance)());
+-      } else {
+-        translateX.value = withSpring(0);
+-      }
+-    });
+-
+-  const cardStyle = useAnimatedStyle(() => ({
+-    transform: [{ translateX: translateX.value }, { rotate: `${translateX.value / 20}deg` }],
+-  }));
+-
+-  return (
+-    <View style={styles.fill}>
+-      <View style={styles.cardHud}>
+-        <Text style={styles.eyebrow}>{copy.card.title(index + 1, total)}</Text>
+-        <View style={styles.dotRow}>
+-          {Array.from({ length: total }).map((_, i) => (
+-            <View
+-              key={i}
+-              style={[
+-                styles.dot,
+-                i < index && styles.dotDone,
+-                i === index && styles.dotCurrent,
+-              ]}
+-            />
+-          ))}
+-        </View>
+-      </View>
+-
+-      <View style={styles.cardCenter}>
+-        <GestureDetector gesture={pan}>
+-          <Animated.View style={cardStyle}>
+-            <PackFace
+-              art={[color, "rgba(0,0,0,0.55)"]}
+-              imageUrl={item.textureUrl}
+-              width={220}
+-              height={298}
+-              radius={16}
+-              tier={tier?.name.toUpperCase()}
+-              label={item.name}
+-            />
+-          </Animated.View>
+-        </GestureDetector>
+-      </View>
+-
+-      <View style={styles.cardFooter}>
+-        <View style={styles.statusRow}>
+-          <View>
+-            <Text style={styles.statusLabel}>{copy.card.statusLabel}</Text>
+-            <Text style={styles.statusValue}>
+-              {isNew ? copy.card.newLabel : copy.card.duplicateLabel(holdCount)}
+-            </Text>
+-          </View>
+-          <View style={styles.statusRight}>
+-            <Text style={styles.statusLabel}>{copy.card.runningTotalLabel}</Text>
+-            <Text style={styles.statusValue}>${(runningTotalCents / 100).toFixed(0)}</Text>
+-          </View>
+-        </View>
+-        <Text style={styles.hint}>{copy.card.hint}</Text>
+-      </View>
+-    </View>
+-  );
+-}
+-
+-const HOLD_DURATION_MS = 1400;
+-
+-export function FinalCardView({
+-  item,
+-  tier,
+-  holdCount,
+-  total,
+-  onRevealed,
+-}: {
+-  item: ItemDetail;
+-  tier: { colorHex: string; name: string } | null;
+-  holdCount: number;
+-  total: number;
+-  onRevealed: () => void;
+-}) {
+-  const [revealed, setRevealed] = useState(false);
+-  const progress = useSharedValue(0);
+-  const color = tier?.colorHex ?? accents.cards.top;
+-
+-  const ringStyle = useAnimatedStyle(() => ({ opacity: 0.3 + progress.value * 0.7 }));
+-
+-  function startHold() {
+-    progress.value = withTiming(1, { duration: HOLD_DURATION_MS }, (finished) => {
+-      if (finished) runOnJS(setRevealed)(true);
+-    });
+-  }
+-
+-  function cancelHold() {
+-    if (!revealed) progress.value = withTiming(0, { duration: 200 });
+-  }
+-
+-  return (
+-    <View style={styles.fill}>
+-      <View style={styles.cardHud}>
+-        <Text style={styles.eyebrow}>{copy.final.title(total)}</Text>
+-        {!revealed && <Text style={styles.holdLabel}>{copy.final.hold}</Text>}
+-      </View>
+-
+-      <View style={styles.cardCenter}>
+-        {!revealed ? (
+-          <Pressable onPressIn={startHold} onPressOut={cancelHold}>
+-            <Animated.View style={ringStyle}>
+-              <PackFace art={[color, "rgba(0,0,0,0.6)"]} width={236} height={326} radius={18} crimp />
+-            </Animated.View>
+-          </Pressable>
+-        ) : (
+-          <PackFace
+-            art={[color, "rgba(0,0,0,0.6)"]}
+-            imageUrl={item.textureUrl}
+-            width={236}
+-            height={326}
+-            radius={18}
+-            tier={tier?.name.toUpperCase()}
+-            label={item.name}
+-          />
+-        )}
+-      </View>
+-
+-      <View style={styles.cardFooter}>
+-        {revealed ? (
+-          <>
+-            <View style={styles.newBinderNote}>
+-              <Text style={styles.newBinderText}>
+-                {holdCount === 1 ? copy.final.newToBinder : copy.card.duplicateLabel(holdCount)}
+-              </Text>
+-            </View>
+-            <Pressable onPress={onRevealed}>
+-              <Text style={styles.hint}>{copy.final.continueHint}</Text>
+-            </Pressable>
+-          </>
+-        ) : (
+-          <Text style={styles.hint}>{copy.final.holdHint}</Text>
+-        )}
+-      </View>
+-    </View>
+-  );
+-}
+-
+ export function SummaryView({
+   sku,
+   items,
+diff --git a/app/src/engine/cards/blackLabelReveal/BlackLabelFanReveal.tsx b/app/src/engine/cards/blackLabelReveal/BlackLabelFanReveal.tsx
+index 0157b20..998869f 100644
+--- a/app/src/engine/cards/blackLabelReveal/BlackLabelFanReveal.tsx
++++ b/app/src/engine/cards/blackLabelReveal/BlackLabelFanReveal.tsx
+@@ -1,276 +1,17 @@
+-// Black Label's card-reveal step — the same flat 2D fanned-and-timed-flip screen as
+-// ../vaultReveal/VaultCardFanReveal.tsx (see that file's header for why it's flat 2D and why
+-// each card flips on a timed cue rather than a swipe gesture), bound to this tier's own
+-// personality/adapter/art instead of Vault Break's. Seven cards fan here instead of six — the
+-// layout math (computeFanSlots) already scales off `total`, so that's data, not a code change.
++// Black Label's card-reveal step — the same shared press-and-hold reveal screen as
++// ../vaultReveal/VaultCardFanReveal.tsx (see ../reveal/holdToOpen/HoldToOpenFanReveal.tsx's
++// header for why it's shared rather than duplicated), bound to this tier's own
++// personality/adapter/art instead of Vault Break's. Six cards fan here instead of five — the fan
++// layout math already scales off the deck length, so that's data, not a code change.
+ //
+-// The per-card art is baked by art/blackLabelCardArt.ts's drawCardFaceImage — this component
+-// only positions and flips those images, it draws none of that content itself.
+-import { useEffect, useMemo, useRef, useState } from "react";
+-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+-import * as Haptics from "expo-haptics";
+-import { Image } from "expo-image";
+-import { Canvas, Image as SkiaImage, type SkImage } from "@shopify/react-native-skia";
+-import Animated, {
+-  Easing,
+-  useAnimatedStyle,
+-  useSharedValue,
+-  withDelay,
+-  withTiming,
+-} from "react-native-reanimated";
++// The per-card art is baked by art/blackLabelCardArt.ts's drawCardFaceImage — this file only
++// adapts real pulled items and hands the pre-baked images to the shared reveal screen.
++import { useMemo } from "react";
+ import type { PackSku, PulledOwnedItem } from "@grailhaus/shared";
+-import { fonts, spacing } from "../../../theme/tokens";
+-import { itemDetail as detailCopy } from "../../../content/copy";
+ import { blackLabelPersonality } from "./config/blackLabel.config";
+-import { VaultVignette } from "../vaultReveal/ui/VaultVignette";
+ import { adaptPulledItemsToBlackLabelDeck } from "./engine/adaptBlackLabelDeck";
+ import { CARD_ASPECT, drawCardFaceImage, drawCardVersoImage } from "./art/blackLabelCardArt";
+-import type { VaultCardData } from "../vaultReveal/config/types";
+-
+-/** Traits come off the catalog as a bullet-separated string, same convention CardDetailScreen
+- * splits on — reused here rather than re-derived so a "Rookie Icon • Bright Pull" traits string
+- * reads identically in both places. */
+-function splitTraits(traits: string | null): string[] {
+-  if (!traits) return [];
+-  return traits.split(/[•,]/).map((t) => t.trim()).filter(Boolean);
+-}
+-
+-const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
+-
+-// Timing for the automatic staged reveal — each card's turn, then a longer beat before the last
+-// (rarest, per orderedItems' commons-first sort) card so it reads as the moment being built to,
+-// then a settle pause before the Continue control appears.
+-const STAGGER_MS = 780;
+-const HERO_EXTRA_DELAY_MS = 500;
+-const SETTLE_AFTER_LAST_MS = 650;
+-
+-interface FanSlot {
+-  rotate: number;
+-  x: number;
+-  y: number;
+-  scale: number;
+-}
+-
+-function computeFanSlots(total: number, cardW: number, screenW: number): FanSlot[] {
+-  const center = (total - 1) / 2;
+-  const angleStep = total > 4 ? 8 : 10;
+-  const arcDrop = 9;
+-  const maxSpread = screenW - 56 - cardW;
+-  const xStep = total > 1 ? Math.min(cardW * 0.4, Math.max(18, maxSpread / (total - 1))) : 0;
+-  return Array.from({ length: total }, (_, i) => {
+-    const offset = i - center;
+-    const isHero = i === total - 1;
+-    return {
+-      rotate: offset * angleStep,
+-      x: offset * xStep,
+-      y: Math.abs(offset) * arcDrop - (isHero ? 20 : 0),
+-      scale: isHero ? 1.08 : 1,
+-    };
+-  });
+-}
+-
+-function FanCard({
+-  face,
+-  verso,
+-  photoUrl,
+-  slot,
+-  cardW,
+-  cardH,
+-  revealed,
+-  isHero,
+-  selected,
+-  dimmed,
+-  zIndex,
+-  onPress,
+-}: {
+-  face: SkImage;
+-  verso: SkImage;
+-  photoUrl: string | null;
+-  slot: FanSlot;
+-  cardW: number;
+-  cardH: number;
+-  revealed: boolean;
+-  isHero: boolean;
+-  selected: boolean;
+-  dimmed: boolean;
+-  zIndex: number;
+-  onPress: () => void;
+-}) {
+-  const settle = useSharedValue(0); // 0 = resting in the face-down deck stack, 1 = fanned into place
+-  const flip = useSharedValue(0); // 0 = verso showing, 1 = face showing
+-  const pop = useSharedValue(0); // 0 = sitting in the fan, 1 = pulled out front-and-center
+-  const dim = useSharedValue(0);
+-
+-  useEffect(() => {
+-    if (!revealed) return;
+-    const ease = Easing.out(Easing.cubic);
+-    settle.value = withTiming(1, { duration: 520, easing: ease });
+-    flip.value = withDelay(120, withTiming(1, { duration: 420, easing: Easing.inOut(Easing.cubic) }));
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [revealed]);
+-
+-  useEffect(() => {
+-    pop.value = withTiming(selected ? 1 : 0, { duration: 280, easing: Easing.out(Easing.cubic) });
+-  }, [selected, pop]);
+-
+-  useEffect(() => {
+-    dim.value = withTiming(dimmed ? 1 : 0, { duration: 220 });
+-  }, [dimmed, dim]);
+-
+-  const containerStyle = useAnimatedStyle(() => {
+-    const baseX = settle.value * slot.x;
+-    const baseY = (1 - settle.value) * 90 + settle.value * slot.y;
+-    const baseRotate = settle.value * slot.rotate;
+-    const baseScale = 0.86 + settle.value * (slot.scale - 0.86);
+-    // Pulled-out target: centered, level, lifted above the rest of the fan, noticeably larger.
+-    const popY = -cardH * 0.3;
+-    const popScale = slot.scale * 1.32;
+-    return {
+-      opacity: 1 - dim.value * 0.72,
+-      transform: [
+-        { translateX: baseX * (1 - pop.value) },
+-        { translateY: baseY + pop.value * (popY - baseY) },
+-        { rotate: `${baseRotate * (1 - pop.value)}deg` },
+-        { scale: baseScale + pop.value * (popScale - baseScale) },
+-      ],
+-    };
+-  });
+-
+-  const versoStyle = useAnimatedStyle(() => ({
+-    transform: [{ perspective: 900 }, { rotateY: `${flip.value * 180}deg` }],
+-    opacity: flip.value > 0.5 ? 0 : 1,
+-  }));
+-  const faceStyle = useAnimatedStyle(() => ({
+-    transform: [{ perspective: 900 }, { rotateY: `${(flip.value - 1) * 180}deg` }],
+-    opacity: flip.value > 0.5 ? 1 : 0,
+-  }));
+-
+-  return (
+-    <Animated.View
+-      style={[
+-        styles.cardSlot,
+-        { width: cardW, height: cardH, zIndex, marginLeft: -cardW / 2, marginTop: -cardH / 2 },
+-        containerStyle,
+-      ]}
+-    >
+-      <Pressable style={StyleSheet.absoluteFill} onPress={onPress} disabled={!revealed} hitSlop={4}>
+-        <Animated.View style={[styles.face, versoStyle]}>
+-          <Canvas style={StyleSheet.absoluteFill}>
+-            <SkiaImage image={verso} x={0} y={0} width={cardW} height={cardH} fit="cover" />
+-          </Canvas>
+-        </Animated.View>
+-        <Animated.View style={[styles.face, faceStyle]}>
+-          {photoUrl ? (
+-            // Just the real card, nothing else — no ribbon, no value block, no serial. That info
+-            // hasn't disappeared, it moved to the tap-to-inspect panel (DescriptionPanel) every
+-            // revealed card already opens on press; here it would just be clutter over the actual
+-            // card. CARD_ASPECT was already chosen to match a real trading card's aspect ratio, so
+-            // "cover" fills the frame edge-to-edge with no visible crop.
+-            <Image
+-              source={photoUrl}
+-              style={StyleSheet.absoluteFill}
+-              contentFit="cover"
+-              transition={150}
+-              cachePolicy="memory-disk"
+-            />
+-          ) : (
+-            // No catalog texture for this item (rare) — fall back to the procedural placeholder
+-            // art rather than showing nothing.
+-            <Canvas style={StyleSheet.absoluteFill}>
+-              <SkiaImage image={face} x={0} y={0} width={cardW} height={cardH} fit="cover" />
+-            </Canvas>
+-          )}
+-        </Animated.View>
+-      </Pressable>
+-    </Animated.View>
+-  );
+-}
+-
+-function DescriptionPanel({
+-  item,
+-  card,
+-  tierColorHex,
+-  visible,
+-  onClose,
+-}: {
+-  item: PulledOwnedItem | null;
+-  card: VaultCardData | null;
+-  tierColorHex: string;
+-  visible: boolean;
+-  onClose: () => void;
+-}) {
+-  const progress = useSharedValue(0);
+-  useEffect(() => {
+-    progress.value = withTiming(visible ? 1 : 0, { duration: 260, easing: Easing.out(Easing.cubic) });
+-  }, [visible, progress]);
+-
+-  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.72 }));
+-  const sheetStyle = useAnimatedStyle(() => ({
+-    opacity: progress.value,
+-    transform: [{ translateY: (1 - progress.value) * 40 }],
+-  }));
+-
+-  if (!item || !card) return null;
+-  const traits = splitTraits(item.traits);
+-  const up = card.delta >= 0;
+-
+-  return (
+-    <>
+-      <Animated.View
+-        pointerEvents={visible ? "auto" : "none"}
+-        style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}
+-      >
+-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+-      </Animated.View>
+-      <Animated.View pointerEvents={visible ? "auto" : "none"} style={[styles.sheet, sheetStyle]}>
+-        <View style={styles.sheetHeader}>
+-          <View style={styles.sheetHeaderText}>
+-            <Text style={styles.sheetName}>{(item.cardTitle ?? item.name).toUpperCase()}</Text>
+-            {item.pokemonName ? <Text style={styles.sheetSubName}>{item.pokemonName}</Text> : null}
+-          </View>
+-          <Pressable style={styles.closeButton} onPress={onClose} hitSlop={10}>
+-            <Text style={styles.closeGlyph}>×</Text>
+-          </Pressable>
+-        </View>
+-
+-        <View style={styles.sheetRow}>
+-          <View style={styles.sheetSpec}>
+-            <Text style={styles.sheetLabel}>{detailCopy.rarity}</Text>
+-            <Text style={[styles.sheetValue, { color: tierColorHex }]}>{card.rarityLabel}</Text>
+-          </View>
+-          <View style={styles.sheetSpec}>
+-            <Text style={styles.sheetLabel}>{detailCopy.collectionLabel}</Text>
+-            <Text style={styles.sheetValue}>{card.edition}</Text>
+-          </View>
+-          <View style={styles.sheetSpec}>
+-            <Text style={styles.sheetLabel}>SERIAL</Text>
+-            <Text style={styles.sheetValue}>{card.serial}</Text>
+-          </View>
+-        </View>
+-
+-        {traits.length > 0 && (
+-          <View style={styles.traitRow}>
+-            {traits.map((t) => (
+-              <View key={t} style={styles.traitChip}>
+-                <Text style={styles.traitText}>{t}</Text>
+-              </View>
+-            ))}
+-          </View>
+-        )}
+-
+-        <View style={styles.valueRow}>
+-          <View>
+-            <Text style={styles.sheetLabel}>{detailCopy.estimatedValue}</Text>
+-            <Text style={styles.sheetValueBig}>{card.value}</Text>
+-          </View>
+-          <Text style={[styles.deltaText, { color: up ? "#7ed6a4" : "#d67e8c" }]}>
+-            {up ? "▲" : "▼"} {Math.abs(card.delta).toFixed(1)}% · 7D
+-          </Text>
+-        </View>
+-      </Animated.View>
+-    </>
+-  );
+-}
++import { HoldToOpenFanReveal } from "../reveal/holdToOpen/HoldToOpenFanReveal";
+ 
+ export function BlackLabelFanReveal({
+   items,
+@@ -281,227 +22,25 @@ export function BlackLabelFanReveal({
+   sku: PackSku;
+   onDone: () => void;
+ }) {
+-  const { width, height } = useWindowDimensions();
+-  const deck: VaultCardData[] = useMemo(() => adaptPulledItemsToBlackLabelDeck(items, sku), [items, sku]);
+-  const total = deck.length;
+-
++  const deck = useMemo(() => adaptPulledItemsToBlackLabelDeck(items, sku), [items, sku]);
+   const verso = useMemo(() => drawCardVersoImage(), []);
+-  // Only ever actually shown for an item with no real catalog photo (rare) — every card with one
+-  // shows that instead, full-bleed, no chrome (see FanCard below).
+   const faces = useMemo(() => deck.map((card) => drawCardFaceImage(card)), [deck]);
+ 
+-  const cardW = Math.min(168, width * 0.4);
+-  const cardH = cardW / CARD_ASPECT;
+-  const slots = useMemo(() => computeFanSlots(total, cardW, width), [total, cardW, width]);
+-
+-  const [revealedCount, setRevealedCount] = useState(0);
+-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+-
+-  function handleCardPress(i: number) {
+-    Haptics.selectionAsync();
+-    setSelectedIndex((cur) => (cur === i ? null : i));
+-  }
+-
+-  useEffect(() => {
+-    timers.current.forEach(clearTimeout);
+-    timers.current = [];
+-    let elapsed = 400;
+-    for (let i = 0; i < total; i++) {
+-      const isHero = i === total - 1;
+-      elapsed += i === 0 ? 0 : STAGGER_MS + (isHero ? HERO_EXTRA_DELAY_MS : 0);
+-      const at = elapsed;
+-      timers.current.push(
+-        setTimeout(() => {
+-          setRevealedCount((c) => Math.max(c, i + 1));
+-          const style = isHero
+-            ? Haptics.ImpactFeedbackStyle.Heavy
+-            : deck[i].rarity === "PRIME"
+-              ? Haptics.ImpactFeedbackStyle.Medium
+-              : Haptics.ImpactFeedbackStyle.Light;
+-          Haptics.impactAsync(style);
+-          if (isHero) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+-        }, at)
+-      );
+-    }
+-    return () => timers.current.forEach(clearTimeout);
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [total]);
+-
+-  const allRevealed = revealedCount >= total;
+-  const [showContinue, setShowContinue] = useState(false);
+-  useEffect(() => {
+-    if (!allRevealed) return;
+-    const t = setTimeout(() => setShowContinue(true), SETTLE_AFTER_LAST_MS);
+-    return () => clearTimeout(t);
+-  }, [allRevealed]);
+-
+-  function skipToEnd() {
+-    timers.current.forEach(clearTimeout);
+-    setRevealedCount(total);
+-  }
+-
+-  const defaultTierColor = "#c9a24a";
+-  const tierColorHex =
+-    selectedIndex !== null
+-      ? sku.rarityTiers.find((t) => t.level === items[selectedIndex].rarityTierLevel)?.colorHex ?? defaultTierColor
+-      : defaultTierColor;
+-
+-  const continueOpacity = useSharedValue(0);
+-  useEffect(() => {
+-    continueOpacity.value = withTiming(showContinue ? 1 : 0, { duration: 320 });
+-  }, [showContinue, continueOpacity]);
+-  const continueStyle = useAnimatedStyle(() => ({
+-    opacity: continueOpacity.value,
+-    transform: [{ translateY: (1 - continueOpacity.value) * 10 }],
+-  }));
+-
+-  const totalValueCents = items
+-    .slice(0, revealedCount)
+-    .reduce((sum, item) => sum + item.currentValueCents, 0);
+-
+   return (
+-    <View style={styles.root}>
+-      <VaultVignette width={width} height={height} glowColor="rgba(180,140,60,0.20)" />
+-
+-      <View style={styles.header}>
+-        <Text style={styles.kicker}>{blackLabelPersonality.copy.kicker}</Text>
+-        <Text style={styles.title}>Your Pull</Text>
+-        <Text style={styles.counter}>{Math.min(revealedCount, total)} / {total} REVEALED</Text>
+-      </View>
+-
+-      <View style={styles.fanArea}>
+-        {deck.map((_, i) => (
+-          <FanCard
+-            key={i}
+-            face={faces[i]}
+-            verso={verso}
+-            photoUrl={items[i].textureUrl}
+-            slot={slots[i]}
+-            cardW={cardW}
+-            cardH={cardH}
+-            revealed={i < revealedCount}
+-            isHero={i === total - 1}
+-            selected={selectedIndex === i}
+-            dimmed={selectedIndex !== null && selectedIndex !== i}
+-            zIndex={selectedIndex === i ? total + 2 : i === total - 1 ? total + 1 : i}
+-            onPress={() => handleCardPress(i)}
+-          />
+-        ))}
+-      </View>
+-
+-      <View style={styles.footer}>
+-        {!showContinue ? (
+-          <Pressable onPress={skipToEnd} disabled={allRevealed} hitSlop={10}>
+-            <Text style={styles.hint}>{allRevealed ? "" : "Tap here to reveal faster"}</Text>
+-          </Pressable>
+-        ) : (
+-          <Animated.View style={[styles.continueWrap, continueStyle]}>
+-            <Text style={styles.totalLabel}>
+-              TOTAL VALUE <Text style={styles.totalValue}>${(totalValueCents / 100).toFixed(0)}</Text>
+-            </Text>
+-            <Pressable style={styles.continueButton} onPress={onDone}>
+-              <Text style={styles.continueLabel}>Continue</Text>
+-            </Pressable>
+-          </Animated.View>
+-        )}
+-      </View>
+-
+-      <DescriptionPanel
+-        item={selectedIndex !== null ? items[selectedIndex] : null}
+-        card={selectedIndex !== null ? deck[selectedIndex] : null}
+-        tierColorHex={tierColorHex}
+-        visible={selectedIndex !== null}
+-        onClose={() => setSelectedIndex(null)}
+-      />
+-    </View>
++    <HoldToOpenFanReveal
++      items={items}
++      sku={sku}
++      deck={deck}
++      faces={faces}
++      verso={verso}
++      cardAspect={CARD_ASPECT}
++      palette={{
++        kicker: blackLabelPersonality.copy.kicker,
++        accentHex: "#c9a24a",
++        accentRGB: "201,162,74",
++        vignetteGlow: "rgba(180,140,60,0.20)",
++      }}
++      onDone={onDone}
++    />
+   );
+ }
+-
+-const styles = StyleSheet.create({
+-  root: { flex: 1, backgroundColor: "#05030a" },
+-  header: { alignItems: "center", paddingTop: 64, gap: 6 },
+-  kicker: {
+-    fontFamily: mono, fontSize: 10, letterSpacing: 3.4, color: "#8a6a2e", textTransform: "uppercase",
+-  },
+-  title: { fontFamily: fonts.black, fontSize: 26, color: "#f4ece0" },
+-  counter: {
+-    fontFamily: mono, fontSize: 10, letterSpacing: 2, color: "rgba(244,236,224,0.5)", marginTop: 2,
+-  },
+-  fanArea: { flex: 1, alignItems: "center", justifyContent: "center" },
+-  cardSlot: { position: "absolute", left: "50%", top: "50%" },
+-  face: {
+-    position: "absolute",
+-    top: 0, left: 0, right: 0, bottom: 0,
+-    borderRadius: 12,
+-    overflow: "hidden",
+-    borderWidth: 1,
+-    borderColor: "rgba(201,162,74,0.35)",
+-    backfaceVisibility: "hidden",
+-  },
+-  footer: { alignItems: "center", paddingBottom: 40, minHeight: 96, justifyContent: "flex-end", gap: spacing.md },
+-  hint: {
+-    fontFamily: mono, fontSize: 10, letterSpacing: 2.6, textTransform: "uppercase",
+-    color: "rgba(244,236,224,0.4)",
+-  },
+-  continueWrap: { alignItems: "center", gap: spacing.md },
+-  totalLabel: {
+-    fontFamily: mono, fontSize: 10.5, letterSpacing: 2, color: "rgba(244,236,224,0.5)",
+-  },
+-  totalValue: { fontFamily: fonts.bold, fontSize: 13, color: "#f4ece0" },
+-  continueButton: {
+-    height: 56,
+-    minWidth: 220,
+-    borderRadius: 16,
+-    borderWidth: 1.5,
+-    borderColor: "rgba(201,162,74,0.5)",
+-    backgroundColor: "rgba(201,162,74,0.1)",
+-    alignItems: "center",
+-    justifyContent: "center",
+-    paddingHorizontal: 24,
+-  },
+-  continueLabel: { fontFamily: fonts.black, fontSize: 15, letterSpacing: 1, color: "#f4ece0" },
+-
+-  backdrop: { backgroundColor: "#000000" },
+-  sheet: {
+-    position: "absolute",
+-    left: 16,
+-    right: 16,
+-    bottom: 32,
+-    borderRadius: 20,
+-    padding: 20,
+-    backgroundColor: "#120a24",
+-    borderWidth: 1,
+-    borderColor: "rgba(201,162,74,0.28)",
+-    gap: 16,
+-  },
+-  sheetHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+-  sheetHeaderText: { flex: 1, paddingRight: 12, gap: 3 },
+-  sheetName: { fontFamily: fonts.black, fontSize: 18, color: "#f4ece0" },
+-  sheetSubName: { fontFamily: fonts.medium, fontSize: 12.5, color: "rgba(244,236,224,0.55)" },
+-  closeButton: {
+-    width: 28, height: 28, borderRadius: 14,
+-    alignItems: "center", justifyContent: "center",
+-    backgroundColor: "rgba(255,255,255,0.08)",
+-  },
+-  closeGlyph: { fontSize: 18, lineHeight: 18, color: "rgba(244,236,224,0.8)" },
+-  sheetRow: { flexDirection: "row", justifyContent: "space-between" },
+-  sheetSpec: { gap: 3 },
+-  sheetLabel: {
+-    fontFamily: mono, fontSize: 8.5, letterSpacing: 1.6, textTransform: "uppercase",
+-    color: "rgba(244,236,224,0.44)",
+-  },
+-  sheetValue: { fontFamily: fonts.bold, fontSize: 12.5, color: "#f4ece0" },
+-  traitRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+-  traitChip: {
+-    borderWidth: 1, borderColor: "rgba(201,162,74,0.3)", backgroundColor: "rgba(201,162,74,0.08)",
+-    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5,
+-  },
+-  traitText: { fontFamily: fonts.semibold, fontSize: 10.5, color: "#c9a24a" },
+-  valueRow: {
+-    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end",
+-    borderTopWidth: 1, borderTopColor: "rgba(201,162,74,0.16)", paddingTop: 14,
+-  },
+-  sheetValueBig: { fontFamily: fonts.black, fontSize: 24, color: "#f4ece0", marginTop: 2 },
+-  deltaText: { fontFamily: fonts.bold, fontSize: 12.5 },
+-});
+diff --git a/app/src/engine/cards/reveal/CardPackFanReveal.tsx b/app/src/engine/cards/reveal/CardPackFanReveal.tsx
+new file mode 100644
+index 0000000..fb413d6
+--- /dev/null
++++ b/app/src/engine/cards/reveal/CardPackFanReveal.tsx
+@@ -0,0 +1,49 @@
++// Tier 1's card-reveal step — the same shared press-and-hold reveal screen the premium tiers use
++// (holdToOpen/HoldToOpenFanReveal.tsx), bound to this tier's own adapter (engine/
++// adaptCardPackDeck.ts) and the base collector-card art (vaultReveal/art/cardArt.ts, undecorated
++// — no stock/ribbon/windowArt theme overrides, the look every tier started from before Vault
++// Break and Black Label got their own). Replaces CardFlowEngine's old swipe-through-cards +
++// hold-on-the-last-card flow: every card here is now revealed the same deliberate way, not just
++// the rarest one. The pack tear itself (CardFlowEngine's IntroductionView) is unchanged.
++import { useMemo } from "react";
++import type { ItemDetail, PackSku } from "@grailhaus/shared";
++import { adaptItemDetailsToCardPackDeck } from "./engine/adaptCardPackDeck";
++import { CARD_ASPECT, drawCardFaceImage, drawCardVersoImage } from "../vaultReveal/art/cardArt";
++import { HoldToOpenFanReveal } from "./holdToOpen/HoldToOpenFanReveal";
++
++const VERSO_THEME = {
++  line1: "GRAILHAUS · SERIES I",
++  line2: "COLLECTOR CARD GAME",
++};
++
++export function CardPackFanReveal({
++  items,
++  sku,
++  onDone,
++}: {
++  items: ItemDetail[];
++  sku: PackSku;
++  onDone: () => void;
++}) {
++  const deck = useMemo(() => adaptItemDetailsToCardPackDeck(items, sku), [items, sku]);
++  const verso = useMemo(() => drawCardVersoImage(VERSO_THEME), []);
++  const faces = useMemo(() => deck.map((card) => drawCardFaceImage(card)), [deck]);
++
++  return (
++    <HoldToOpenFanReveal
++      items={items}
++      sku={sku}
++      deck={deck}
++      faces={faces}
++      verso={verso}
++      cardAspect={CARD_ASPECT}
++      palette={{
++        kicker: "Sealed · Series I",
++        accentHex: "#d8a93f",
++        accentRGB: "216,169,63",
++        vignetteGlow: "rgba(177,75,255,0.18)",
++      }}
++      onDone={onDone}
++    />
++  );
++}
+diff --git a/app/src/engine/cards/reveal/engine/adaptCardPackDeck.ts b/app/src/engine/cards/reveal/engine/adaptCardPackDeck.ts
+new file mode 100644
+index 0000000..69a3d3f
+--- /dev/null
++++ b/app/src/engine/cards/reveal/engine/adaptCardPackDeck.ts
+@@ -0,0 +1,75 @@
++// Tier 1's own adapter onto VaultCardData — same idea and same real/derived-data discipline as
++// vaultReveal/engine/adaptRealDeck.ts (see that file's header), just built against `ItemDetail[]`
++// instead of `PulledOwnedItem[]`: CardFlowEngine's pulled items never carry `ownedItemId` (that
++// field is exclusive to the post-purchase `PulledOwnedItem`), so the serial is hashed off the
++// catalog item's own `id` instead. Everything else — rarity mapping, per-rarity finish/tint/glow,
++// the 7-day drift sparkline/delta — is identical.
++import { computePriceDriftHistory } from "@grailhaus/shared";
++import type { ItemDetail, PackSku, RarityTierLevel } from "@grailhaus/shared";
++import type { CardRarity, VaultCardData } from "../../vaultReveal/config/types";
++
++const RARITY_BY_LEVEL: Record<RarityTierLevel, CardRarity> = { 1: "CORE", 2: "PRIME", 3: "GRAIL" };
++
++const FINISH_BY_RARITY: Record<CardRarity, string> = {
++  CORE: "Standard Finish",
++  PRIME: "Foil Finish",
++  GRAIL: "Prismatic Finish",
++};
++
++const TINT_BY_RARITY: Record<CardRarity, string> = {
++  CORE: "#241041",
++  PRIME: "#3a2410",
++  GRAIL: "#3a2c05",
++};
++const GLOW_RGB_BY_RARITY: Record<CardRarity, string> = {
++  CORE: "170,150,220",
++  PRIME: "232,207,162",
++  GRAIL: "255,224,150",
++};
++
++const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
++const SPARK_POINTS = 16;
++
++function hashSeed(id: string): number {
++  let h = 2166136261;
++  for (let i = 0; i < id.length; i++) {
++    h ^= id.charCodeAt(i);
++    h = Math.imul(h, 16777619);
++  }
++  return Math.abs(h) || 1;
++}
++
++function serialFromId(id: string): string {
++  const compact = id.replace(/-/g, "").toUpperCase();
++  return `GH-${compact.slice(0, 8)}`;
++}
++
++export function adaptItemDetailsToCardPackDeck(items: ItemDetail[], sku: PackSku): VaultCardData[] {
++  return items.map((item) => {
++    const rarity = RARITY_BY_LEVEL[item.rarityTierLevel];
++    const rarityLabel = sku.rarityTiers.find((t) => t.level === item.rarityTierLevel)?.name ?? rarity;
++    const buckets = computePriceDriftHistory(item, WEEK_MS, SPARK_POINTS * 4);
++    const step = Math.max(1, Math.floor(buckets.length / SPARK_POINTS));
++    const spark = buckets.filter((_, i) => i % step === 0).slice(0, SPARK_POINTS).map((b) => b.avgValueCents);
++    if (spark.length < 2) spark.push(item.currentValueCents);
++    const first = spark[0];
++    const last = spark[spark.length - 1];
++    const delta = first > 0 ? ((last - first) / first) * 100 : 0;
++
++    return {
++      name: item.name,
++      rarity,
++      rarityLabel: rarityLabel.toUpperCase(),
++      edition: item.collection ?? "Series I",
++      finish: FINISH_BY_RARITY[rarity],
++      value: `$${Math.round(item.currentValueCents / 100).toLocaleString()}`,
++      delta,
++      tint: TINT_BY_RARITY[rarity],
++      glowRGB: GLOW_RGB_BY_RARITY[rarity],
++      seed: hashSeed(item.id),
++      serial: serialFromId(item.id),
++      held: "ACQUIRED TODAY",
++      spark,
++    };
++  });
++}
+diff --git a/app/src/engine/cards/reveal/holdToOpen/HoldToOpenFanReveal.tsx b/app/src/engine/cards/reveal/holdToOpen/HoldToOpenFanReveal.tsx
+new file mode 100644
+index 0000000..b2ff6e4
+--- /dev/null
++++ b/app/src/engine/cards/reveal/holdToOpen/HoldToOpenFanReveal.tsx
+@@ -0,0 +1,690 @@
++// The shared post-tear card-reveal screen for all three card tiers (Tier 1's plain pack, Vault
++// Break, Black Label). Each tier's own FanReveal file (vaultReveal/VaultCardFanReveal.tsx,
++// blackLabelReveal/BlackLabelFanReveal.tsx, reveal/CardPackFanReveal.tsx) is now a thin wrapper
++// that adapts its own pulled items into VaultCardData + pre-bakes its own face/verso art, then
++// hands both to this component along with a small palette — the same "shared engine,
++// per-tier personality" split BlackLabelScene.tsx already uses for the 3D tear stage.
++//
++// The reveal itself is useHoldToOpenDeck's press-and-hold, one-card-at-a-time mechanic (see that
++// file's header) instead of each tier's old automatic, timer-staggered flip. The fan layout, the
++// per-card Skia face/verso rendering, and the tap-to-inspect sheet are carried over unchanged
++// from the previous VaultCardFanReveal/BlackLabelFanReveal — only the sequencing (how a card gets
++// from sealed to revealed) changed; the pack tear that precedes this screen is untouched.
++import { useEffect, useMemo, useState } from "react";
++import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
++import * as Haptics from "expo-haptics";
++import { Image } from "expo-image";
++import { Canvas, Image as SkiaImage, type SkImage } from "@shopify/react-native-skia";
++import Animated, {
++  Easing,
++  useAnimatedStyle,
++  useSharedValue,
++  withDelay,
++  withTiming,
++  type SharedValue,
++} from "react-native-reanimated";
++import type { ItemDetail, PackSku } from "@grailhaus/shared";
++import { fonts, spacing } from "../../../../theme/tokens";
++import { itemDetail as detailCopy } from "../../../../content/copy";
++import { VaultVignette } from "../../vaultReveal/ui/VaultVignette";
++import type { VaultCardData } from "../../vaultReveal/config/types";
++import { useHoldToOpenDeck } from "./useHoldToOpenDeck";
++
++function splitTraits(traits: string | null): string[] {
++  if (!traits) return [];
++  return traits.split(/[•,]/).map((t) => t.trim()).filter(Boolean);
++}
++
++const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
++
++const SETTLE_AFTER_LAST_MS = 550;
++
++interface FanSlot {
++  rotate: number;
++  x: number;
++  y: number;
++  scale: number;
++}
++
++function computeFanSlots(total: number, cardW: number, screenW: number): FanSlot[] {
++  const center = (total - 1) / 2;
++  const angleStep = total > 4 ? 8 : 10;
++  const arcDrop = 9;
++  const maxSpread = screenW - 56 - cardW;
++  const xStep = total > 1 ? Math.min(cardW * 0.4, Math.max(18, maxSpread / (total - 1))) : 0;
++  return Array.from({ length: total }, (_, i) => {
++    const offset = i - center;
++    return { rotate: offset * angleStep, x: offset * xStep, y: Math.abs(offset) * arcDrop, scale: 1 };
++  });
++}
++
++export interface HoldToOpenPalette {
++  kicker: string;
++  /** Card border / chip tint, e.g. "#e8cf9a". */
++  accentHex: string;
++  /** Same color as `accentHex`, as an "r,g,b" triple for building rgba() strings. */
++  accentRGB: string;
++  /** VaultVignette's top glow — Vault Break's violet, Black Label's ember, etc. */
++  vignetteGlow: string;
++}
++
++function FanCard({
++  face,
++  verso,
++  photoUrl,
++  slot,
++  cardW,
++  cardH,
++  revealed,
++  isFront,
++  dimmed,
++  zIndex,
++  dealIndex,
++  chargeSV,
++  liftSV,
++  jitterSV,
++  isCharging,
++  palette,
++  onPressIn,
++  onPressOut,
++  onPress,
++  interactive,
++}: {
++  face: SkImage;
++  verso: SkImage;
++  photoUrl: string | null;
++  slot: FanSlot;
++  cardW: number;
++  cardH: number;
++  revealed: boolean;
++  isFront: boolean;
++  dimmed: boolean;
++  zIndex: number;
++  dealIndex: number;
++  chargeSV: SharedValue<number>;
++  liftSV: SharedValue<number>;
++  jitterSV: SharedValue<number>;
++  isCharging: boolean;
++  palette: HoldToOpenPalette;
++  onPressIn?: () => void;
++  onPressOut?: () => void;
++  onPress?: () => void;
++  interactive: boolean;
++}) {
++  const settle = useSharedValue(0);
++  const flip = useSharedValue(0);
++  const pop = useSharedValue(0);
++  const dim = useSharedValue(0);
++
++  // Every card — sealed or not — fans out into its resting slot immediately on mount, staggered
++  // slightly by position, so the whole sealed hand is visible at once (unlike the old
++  // timer-staggered reveal, this flow needs the full stack on screen from the start: it's what
++  // tells the user there are `total` cards left to open). Only the flip (verso -> face) waits on
++  // `revealed`.
++  useEffect(() => {
++    settle.value = withDelay(dealIndex * 60, withTiming(1, { duration: 480, easing: Easing.out(Easing.cubic) }));
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, []);
++
++  useEffect(() => {
++    if (!revealed) return;
++    flip.value = withDelay(100, withTiming(1, { duration: 380, easing: Easing.inOut(Easing.cubic) }));
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [revealed]);
++
++  useEffect(() => {
++    pop.value = withTiming(isFront ? 1 : 0, { duration: 280, easing: Easing.out(Easing.cubic) });
++  }, [isFront, pop]);
++
++  useEffect(() => {
++    dim.value = withTiming(dimmed ? 1 : 0, { duration: 220 });
++  }, [dimmed, dim]);
++
++  const containerStyle = useAnimatedStyle(() => {
++    const baseX = settle.value * slot.x;
++    const baseY = (1 - settle.value) * 90 + settle.value * slot.y;
++    const baseRotate = settle.value * slot.rotate;
++    const baseScale = 0.86 + settle.value * (slot.scale - 0.86);
++
++    const charge = isCharging ? chargeSV.value : 0;
++    const lift = isCharging ? liftSV.value : 0;
++    const jitter = isCharging ? jitterSV.value : 0;
++
++    const popY = -cardH * 0.3 - lift * 18;
++    const popScale = slot.scale * (1.32 + charge * 0.05);
++
++    return {
++      opacity: 1 - dim.value * 0.72,
++      transform: [
++        { translateX: baseX * (1 - pop.value) + jitter * 10 * pop.value },
++        { translateY: baseY + pop.value * (popY - baseY) },
++        { rotate: `${baseRotate * (1 - pop.value)}deg` },
++        { scale: baseScale + pop.value * (popScale - baseScale) },
++      ],
++    };
++  });
++
++  const versoStyle = useAnimatedStyle(() => ({
++    transform: [{ perspective: 900 }, { rotateY: `${flip.value * 180}deg` }],
++    opacity: flip.value > 0.5 ? 0 : 1,
++  }));
++  const faceStyle = useAnimatedStyle(() => ({
++    transform: [{ perspective: 900 }, { rotateY: `${(flip.value - 1) * 180}deg` }],
++    opacity: flip.value > 0.5 ? 1 : 0,
++  }));
++  const lockFillStyle = useAnimatedStyle(() => ({ width: `${chargeSV.value * 100}%` }));
++
++  return (
++    <Animated.View
++      style={[
++        styles.cardSlot,
++        { width: cardW, height: cardH, zIndex, marginLeft: -cardW / 2, marginTop: -cardH / 2 },
++        containerStyle,
++      ]}
++    >
++      <Pressable
++        style={StyleSheet.absoluteFill}
++        onPressIn={interactive ? onPressIn : undefined}
++        onPressOut={interactive ? onPressOut : undefined}
++        onPress={interactive ? onPress : undefined}
++        disabled={!interactive}
++        hitSlop={6}
++      >
++        <Animated.View
++          style={[styles.face, versoStyle, { borderColor: `rgba(${palette.accentRGB},0.35)` }]}
++        >
++          <Canvas style={StyleSheet.absoluteFill}>
++            <SkiaImage image={verso} x={0} y={0} width={cardW} height={cardH} fit="cover" />
++          </Canvas>
++        </Animated.View>
++        <Animated.View
++          style={[styles.face, faceStyle, { borderColor: `rgba(${palette.accentRGB},0.35)` }]}
++        >
++          {photoUrl ? (
++            <Image
++              source={photoUrl}
++              style={StyleSheet.absoluteFill}
++              contentFit="cover"
++              transition={150}
++              cachePolicy="memory-disk"
++            />
++          ) : (
++            <Canvas style={StyleSheet.absoluteFill}>
++              <SkiaImage image={face} x={0} y={0} width={cardW} height={cardH} fit="cover" />
++            </Canvas>
++          )}
++        </Animated.View>
++      </Pressable>
++      {isCharging && (
++        <View style={styles.lockTrack} pointerEvents="none">
++          <Animated.View
++            style={[styles.lockFill, lockFillStyle, { backgroundColor: palette.accentHex }]}
++          />
++        </View>
++      )}
++    </Animated.View>
++  );
++}
++
++function Mote({ index, count, hex, onSurfaceY }: { index: number; count: number; hex: string; onSurfaceY: number }) {
++  const p = useSharedValue(0);
++  useEffect(() => {
++    p.value = withDelay(index * 45, withTiming(1, { duration: 1000 + (index % 3) * 200, easing: Easing.out(Easing.quad) }));
++  }, [index, p]);
++  const angle = (index / count) * Math.PI * 2;
++  const radius = 90;
++  const style = useAnimatedStyle(() => ({
++    opacity: (1 - p.value) * (p.value < 0.14 ? p.value / 0.14 : 1),
++    transform: [
++      { translateX: Math.cos(angle) * radius * p.value },
++      { translateY: onSurfaceY + Math.sin(angle) * radius * p.value - p.value * 60 },
++      { scale: 0.5 + p.value * 0.6 },
++    ],
++  }));
++  return <Animated.View pointerEvents="none" style={[styles.mote, style, { backgroundColor: hex }]} />;
++}
++
++function OpenFlourish({ rings, motes, hex, cardY }: { rings: number; motes: number; hex: string; cardY: number }) {
++  const ring1 = useSharedValue(0);
++  const ring2 = useSharedValue(0);
++  useEffect(() => {
++    if (rings >= 1) ring1.value = withTiming(1, { duration: 950, easing: Easing.out(Easing.cubic) });
++    if (rings >= 2) ring2.value = withDelay(140, withTiming(1, { duration: 1100, easing: Easing.out(Easing.cubic) }));
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [rings]);
++  const ring1Style = useAnimatedStyle(() => ({
++    opacity: (1 - ring1.value) * 0.85,
++    transform: [{ translateY: cardY }, { scale: 0.4 + ring1.value * 2.1 }],
++  }));
++  const ring2Style = useAnimatedStyle(() => ({
++    opacity: (1 - ring2.value) * 0.55,
++    transform: [{ translateY: cardY }, { scale: 0.4 + ring2.value * 2.6 }],
++  }));
++  return (
++    <View style={StyleSheet.absoluteFill} pointerEvents="none">
++      {rings >= 1 && <Animated.View style={[styles.ring, ring1Style, { borderColor: hex }]} />}
++      {rings >= 2 && <Animated.View style={[styles.ring, ring2Style, { borderColor: hex, opacity: 0.6 }]} />}
++      {Array.from({ length: motes }).map((_, i) => (
++        <Mote key={i} index={i} count={motes} hex={hex} onSurfaceY={cardY} />
++      ))}
++    </View>
++  );
++}
++
++function DescriptionPanel({
++  item,
++  card,
++  tierColorHex,
++  visible,
++  onClose,
++}: {
++  item: ItemDetail | null;
++  card: VaultCardData | null;
++  tierColorHex: string;
++  visible: boolean;
++  onClose: () => void;
++}) {
++  const progress = useSharedValue(0);
++  useEffect(() => {
++    progress.value = withTiming(visible ? 1 : 0, { duration: 260, easing: Easing.out(Easing.cubic) });
++  }, [visible, progress]);
++
++  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.72 }));
++  const sheetStyle = useAnimatedStyle(() => ({
++    opacity: progress.value,
++    transform: [{ translateY: (1 - progress.value) * 40 }],
++  }));
++
++  if (!item || !card) return null;
++  const traits = splitTraits(item.traits);
++  const up = card.delta >= 0;
++
++  return (
++    <>
++      <Animated.View
++        pointerEvents={visible ? "auto" : "none"}
++        style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}
++      >
++        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
++      </Animated.View>
++      <Animated.View pointerEvents={visible ? "auto" : "none"} style={[styles.sheet, sheetStyle]}>
++        <View style={styles.sheetHeader}>
++          <View style={styles.sheetHeaderText}>
++            <Text style={styles.sheetName}>{(item.cardTitle ?? item.name).toUpperCase()}</Text>
++            {item.pokemonName ? <Text style={styles.sheetSubName}>{item.pokemonName}</Text> : null}
++          </View>
++          <Pressable style={styles.closeButton} onPress={onClose} hitSlop={10}>
++            <Text style={styles.closeGlyph}>×</Text>
++          </Pressable>
++        </View>
++
++        <View style={styles.sheetRow}>
++          <View style={styles.sheetSpec}>
++            <Text style={styles.sheetLabel}>{detailCopy.rarity}</Text>
++            <Text style={[styles.sheetValue, { color: tierColorHex }]}>{card.rarityLabel}</Text>
++          </View>
++          <View style={styles.sheetSpec}>
++            <Text style={styles.sheetLabel}>{detailCopy.collectionLabel}</Text>
++            <Text style={styles.sheetValue}>{card.edition}</Text>
++          </View>
++          <View style={styles.sheetSpec}>
++            <Text style={styles.sheetLabel}>SERIAL</Text>
++            <Text style={styles.sheetValue}>{card.serial}</Text>
++          </View>
++        </View>
++
++        {traits.length > 0 && (
++          <View style={styles.traitRow}>
++            {traits.map((t) => (
++              <View key={t} style={styles.traitChip}>
++                <Text style={styles.traitText}>{t}</Text>
++              </View>
++            ))}
++          </View>
++        )}
++
++        <View style={styles.valueRow}>
++          <View>
++            <Text style={styles.sheetLabel}>{detailCopy.estimatedValue}</Text>
++            <Text style={styles.sheetValueBig}>{card.value}</Text>
++          </View>
++          <Text style={[styles.deltaText, { color: up ? "#7ed6a4" : "#d67e8c" }]}>
++            {up ? "▲" : "▼"} {Math.abs(card.delta).toFixed(1)}% · 7D
++          </Text>
++        </View>
++      </Animated.View>
++    </>
++  );
++}
++
++export function HoldToOpenFanReveal({
++  items,
++  sku,
++  deck,
++  faces,
++  verso,
++  cardAspect,
++  palette,
++  holdMs,
++  onDone,
++}: {
++  items: ItemDetail[];
++  sku: PackSku;
++  /** Same length/order as `items` — see each tier's own adapter (adaptRealDeck.ts,
++   * adaptBlackLabelDeck.ts, reveal/engine/adaptCardPackDeck.ts). */
++  deck: VaultCardData[];
++  /** Pre-baked per-card fallback art (only shown for an item with no real catalog photo) and the
++   * one shared card back, already snapshotted by the caller's own art module. */
++  faces: SkImage[];
++  verso: SkImage;
++  cardAspect: number;
++  palette: HoldToOpenPalette;
++  holdMs?: number;
++  onDone: () => void;
++}) {
++  const { width, height } = useWindowDimensions();
++  const total = deck.length;
++  const rarities = useMemo(() => deck.map((c) => c.rarity), [deck]);
++  const hold = useHoldToOpenDeck(rarities, holdMs);
++
++  const cardW = Math.min(168, width * 0.4);
++  const cardH = cardW / cardAspect;
++  const slots = useMemo(() => computeFanSlots(total, cardW, width), [total, cardW, width]);
++
++  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
++
++  function handleGrab(i: number) {
++    setSelectedIndex(null);
++    hold.grab(i);
++  }
++
++  function handleInspect(i: number) {
++    Haptics.selectionAsync();
++    setSelectedIndex((cur) => (cur === i ? null : i));
++  }
++
++  const frontIndex = hold.heldIndex ?? hold.openIndex ?? selectedIndex;
++
++  const [showContinue, setShowContinue] = useState(false);
++  useEffect(() => {
++    if (!hold.done) {
++      setShowContinue(false);
++      return;
++    }
++    const t = setTimeout(() => setShowContinue(true), SETTLE_AFTER_LAST_MS);
++    return () => clearTimeout(t);
++  }, [hold.done]);
++
++  const continueOpacity = useSharedValue(0);
++  useEffect(() => {
++    continueOpacity.value = withTiming(showContinue ? 1 : 0, { duration: 320 });
++  }, [showContinue, continueOpacity]);
++  const continueStyle = useAnimatedStyle(() => ({
++    opacity: continueOpacity.value,
++    transform: [{ translateY: (1 - continueOpacity.value) * 10 }],
++  }));
++
++  // Ambient vignette breathes brighter while a rarer card is being fought for or sitting open —
++  // same idea as VaultTearStage/BlackLabelTearStage's own fire-driven vignette ramp, just tied to
++  // this screen's own resonance value instead of a 3D scene snapshot.
++  const dimSV = useSharedValue(0);
++  useEffect(() => {
++    dimSV.value = withTiming(hold.activeTuning?.dim ?? 0, { duration: 260 });
++  }, [hold.activeTuning, dimSV]);
++  const dimOverlayStyle = useAnimatedStyle(() => ({ opacity: dimSV.value * 0.5 }));
++
++  const tierColorHex =
++    selectedIndex !== null
++      ? sku.rarityTiers.find((t) => t.level === items[selectedIndex].rarityTierLevel)?.colorHex ?? palette.accentHex
++      : palette.accentHex;
++
++  const totalValueCents = items
++    .filter((_, i) => hold.status[i] === "pulled")
++    .reduce((sum, item) => sum + item.currentValueCents, 0);
++
++  const hint = hold.openIndex != null
++    ? "Tap the card to set it aside"
++    : hold.heldIndex != null
++      ? "Hold…"
++      : hold.done
++        ? ""
++        : "Press and hold to open";
++
++  const note = hold.heldIndex != null
++    ? hold.activeTuning?.note ?? "Keep holding to lock it."
++    : null;
++
++  const openCardIndex = hold.openIndex;
++  const openCardTuning = openCardIndex != null ? hold.activeTuning : null;
++
++  return (
++    <View style={styles.root}>
++      <VaultVignette width={width} height={height} glowColor={palette.vignetteGlow} />
++      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dimOverlay, dimOverlayStyle]} />
++
++      <View style={styles.header}>
++        <Text style={styles.kicker}>{palette.kicker}</Text>
++        <Text style={styles.title}>Your Pull</Text>
++        <Text style={styles.counter}>{hold.revealedCount} / {total} REVEALED</Text>
++      </View>
++
++      <View style={styles.fanArea}>
++        {deck.map((_, i) => (
++          <FanCard
++            key={i}
++            face={faces[i]}
++            verso={verso}
++            photoUrl={items[i].textureUrl}
++            slot={slots[i]}
++            cardW={cardW}
++            cardH={cardH}
++            revealed={hold.status[i] !== "sealed"}
++            isFront={frontIndex === i}
++            dimmed={frontIndex !== null && frontIndex !== i}
++            zIndex={frontIndex === i ? total + 2 : i}
++            dealIndex={i}
++            chargeSV={hold.chargeSV}
++            liftSV={hold.liftSV}
++            jitterSV={hold.jitterSV}
++            isCharging={hold.heldIndex === i}
++            palette={palette}
++            interactive={
++              hold.status[i] === "pulled" ||
++              hold.openIndex === i ||
++              (hold.status[i] === "sealed" && hold.isGrabbable(i))
++            }
++            onPressIn={hold.status[i] === "sealed" ? () => handleGrab(i) : undefined}
++            onPressOut={hold.status[i] === "sealed" ? hold.release : undefined}
++            onPress={
++              hold.openIndex === i ? hold.dock : hold.status[i] === "pulled" ? () => handleInspect(i) : undefined
++            }
++          />
++        ))}
++        {openCardIndex != null && openCardTuning ? (
++          <OpenFlourish
++            rings={openCardTuning.rings}
++            motes={openCardTuning.motes}
++            hex={palette.accentHex}
++            cardY={slots[openCardIndex] ? -cardH * 0.3 : 0}
++          />
++        ) : null}
++      </View>
++
++      <View style={styles.footer}>
++        {!showContinue ? (
++          <View style={styles.holdChrome}>
++            {note ? (
++              <View style={[styles.tellWrap, { borderColor: `rgba(${palette.accentRGB},0.28)` }]}>
++                <Text style={styles.tellLabel}>RESONANCE</Text>
++                <Text style={styles.tellNote}>{note}</Text>
++              </View>
++            ) : null}
++            {hint ? <Text style={styles.hint}>{hint}</Text> : null}
++            {!hold.done && hold.heldIndex == null && hold.openIndex == null ? (
++              <Pressable onPress={hold.revealAll} hitSlop={10}>
++                <Text style={styles.skipHint}>Reveal all instead</Text>
++              </Pressable>
++            ) : null}
++          </View>
++        ) : (
++          <Animated.View style={[styles.continueWrap, continueStyle]}>
++            <Text style={styles.totalLabel}>
++              TOTAL VALUE <Text style={styles.totalValue}>${(totalValueCents / 100).toFixed(0)}</Text>
++            </Text>
++            <Pressable
++              style={[styles.continueButton, { borderColor: `rgba(${palette.accentRGB},0.5)`, backgroundColor: `rgba(${palette.accentRGB},0.1)` }]}
++              onPress={onDone}
++            >
++              <Text style={styles.continueLabel}>Continue</Text>
++            </Pressable>
++          </Animated.View>
++        )}
++      </View>
++
++      <DescriptionPanel
++        item={selectedIndex !== null ? items[selectedIndex] : null}
++        card={selectedIndex !== null ? deck[selectedIndex] : null}
++        tierColorHex={tierColorHex}
++        visible={selectedIndex !== null}
++        onClose={() => setSelectedIndex(null)}
++      />
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  root: { flex: 1, backgroundColor: "#05030a" },
++  dimOverlay: { backgroundColor: "#000000" },
++  header: { alignItems: "center", paddingTop: 64, gap: 6 },
++  kicker: {
++    fontFamily: mono, fontSize: 10, letterSpacing: 3.4, color: "#b99b57", textTransform: "uppercase",
++  },
++  title: { fontFamily: fonts.black, fontSize: 26, color: "#f4ece0" },
++  counter: {
++    fontFamily: mono, fontSize: 10, letterSpacing: 2, color: "rgba(244,236,224,0.5)", marginTop: 2,
++  },
++  fanArea: { flex: 1, alignItems: "center", justifyContent: "center" },
++  cardSlot: { position: "absolute", left: "50%", top: "50%" },
++  face: {
++    position: "absolute",
++    top: 0, left: 0, right: 0, bottom: 0,
++    borderRadius: 12,
++    overflow: "hidden",
++    borderWidth: 1,
++    backfaceVisibility: "hidden",
++  },
++  lockTrack: {
++    position: "absolute",
++    left: "18%",
++    right: "18%",
++    bottom: -14,
++    height: 2,
++    borderRadius: 2,
++    backgroundColor: "rgba(255,255,255,0.14)",
++    overflow: "hidden",
++  },
++  lockFill: { height: "100%", borderRadius: 2 },
++  ring: {
++    position: "absolute",
++    left: "50%",
++    top: "50%",
++    width: 220,
++    height: 220,
++    marginLeft: -110,
++    marginTop: -110,
++    borderRadius: 110,
++    borderWidth: 1.5,
++  },
++  mote: {
++    position: "absolute",
++    left: "50%",
++    top: "50%",
++    width: 4,
++    height: 4,
++    marginLeft: -2,
++    marginTop: -2,
++    borderRadius: 2,
++  },
++  footer: { alignItems: "center", paddingBottom: 40, minHeight: 108, justifyContent: "flex-end", gap: spacing.md },
++  holdChrome: { alignItems: "center", gap: 10 },
++  tellWrap: {
++    minWidth: 220,
++    paddingHorizontal: 16,
++    paddingVertical: 10,
++    borderRadius: 12,
++    borderWidth: 1,
++    backgroundColor: "rgba(10,8,18,0.6)",
++    alignItems: "center",
++    gap: 4,
++  },
++  tellLabel: {
++    fontFamily: mono, fontSize: 8.5, letterSpacing: 2.4, color: "rgba(244,236,224,0.5)",
++  },
++  tellNote: { fontFamily: fonts.semibold, fontSize: 11.5, color: "#f4ece0", textAlign: "center" },
++  hint: {
++    fontFamily: mono, fontSize: 10, letterSpacing: 2.6, textTransform: "uppercase",
++    color: "rgba(244,236,224,0.4)",
++  },
++  skipHint: {
++    fontFamily: mono, fontSize: 9, letterSpacing: 1.8, textTransform: "uppercase",
++    color: "rgba(244,236,224,0.28)", marginTop: 2,
++  },
++  continueWrap: { alignItems: "center", gap: spacing.md },
++  totalLabel: {
++    fontFamily: mono, fontSize: 10.5, letterSpacing: 2, color: "rgba(244,236,224,0.5)",
++  },
++  totalValue: { fontFamily: fonts.bold, fontSize: 13, color: "#f4ece0" },
++  continueButton: {
++    height: 56,
++    minWidth: 220,
++    borderRadius: 16,
++    borderWidth: 1.5,
++    alignItems: "center",
++    justifyContent: "center",
++    paddingHorizontal: 24,
++  },
++  continueLabel: { fontFamily: fonts.black, fontSize: 15, letterSpacing: 1, color: "#f4ece0" },
++
++  backdrop: { backgroundColor: "#000000" },
++  sheet: {
++    position: "absolute",
++    left: 16,
++    right: 16,
++    bottom: 32,
++    borderRadius: 20,
++    padding: 20,
++    backgroundColor: "#120a24",
++    borderWidth: 1,
++    borderColor: "rgba(232,207,162,0.28)",
++    gap: 16,
++  },
++  sheetHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
++  sheetHeaderText: { flex: 1, paddingRight: 12, gap: 3 },
++  sheetName: { fontFamily: fonts.black, fontSize: 18, color: "#f4ece0" },
++  sheetSubName: { fontFamily: fonts.medium, fontSize: 12.5, color: "rgba(244,236,224,0.55)" },
++  closeButton: {
++    width: 28, height: 28, borderRadius: 14,
++    alignItems: "center", justifyContent: "center",
++    backgroundColor: "rgba(255,255,255,0.08)",
++  },
++  closeGlyph: { fontSize: 18, lineHeight: 18, color: "rgba(244,236,224,0.8)" },
++  sheetRow: { flexDirection: "row", justifyContent: "space-between" },
++  sheetSpec: { gap: 3 },
++  sheetLabel: {
++    fontFamily: mono, fontSize: 8.5, letterSpacing: 1.6, textTransform: "uppercase",
++    color: "rgba(244,236,224,0.44)",
++  },
++  sheetValue: { fontFamily: fonts.bold, fontSize: 12.5, color: "#f4ece0" },
++  traitRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
++  traitChip: {
++    borderWidth: 1, borderColor: "rgba(232,207,162,0.3)", backgroundColor: "rgba(232,207,162,0.08)",
++    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5,
++  },
++  traitText: { fontFamily: fonts.semibold, fontSize: 10.5, color: "#e8cf9a" },
++  valueRow: {
++    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end",
++    borderTopWidth: 1, borderTopColor: "rgba(232,207,162,0.16)", paddingTop: 14,
++  },
++  sheetValueBig: { fontFamily: fonts.black, fontSize: 24, color: "#f4ece0", marginTop: 2 },
++  deltaText: { fontFamily: fonts.bold, fontSize: 12.5 },
++});
+diff --git a/app/src/engine/cards/reveal/holdToOpen/useHoldToOpenDeck.ts b/app/src/engine/cards/reveal/holdToOpen/useHoldToOpenDeck.ts
+new file mode 100644
+index 0000000..f426694
+--- /dev/null
++++ b/app/src/engine/cards/reveal/holdToOpen/useHoldToOpenDeck.ts
+@@ -0,0 +1,210 @@
++// The press-and-hold, strictly-one-card-at-a-time reveal mechanic — shared by all three card
++// tiers' post-tear reveal screens (vaultReveal/VaultCardFanReveal.tsx,
++// blackLabelReveal/BlackLabelFanReveal.tsx, reveal/CardPackFanReveal.tsx). Replaces each tier's
++// previous automatic, timer-staggered "card N flips on its own cue" reveal with a deliberate
++// per-card gesture: hold the top sealed card until it charges open, tap it again to set it down,
++// then the next card becomes holdable.
++//
++// This is a direct, hardened port of a Claude Design canvas (GrailHaus_Fan_Rip.dc_3.html)'s own
++// tick()/grab()/dock() state machine — same charge/resonance/lift physics, same per-rarity
++// resist-and-stall feel. That canvas had a real bug: which card counted as "open" was tracked in
++// two places that were supposed to always agree (an instance field and a per-card status flag),
++// and its `grab()` only guarded on a `phase` flag set through a possibly-lagging state update —
++// so a second hold could start before the first card's "open" status had actually landed, and two
++// cards could end up flagged open at once. Ported here with that fixed structurally instead of
++// reproduced: `status` is the *only* source of truth for which card is open — nothing else tracks
++// it in parallel — and `grab` is only ever driven by React state read fresh on every call (no
++// separate instance field that can lag behind it), so the failure mode the fix targeted has no
++// analog in this version.
++//
++// The continuous per-frame physics (charge fill, resonance ramp, lift, jitter) live in Reanimated
++// shared values, written from a plain requestAnimationFrame loop on the JS thread — cheap enough
++// at this scale (a handful of scalars) not to need UI-thread worklets, and it keeps this hook
++// framework-simple. React state (`status`/`heldIndex`/`openIndex`) only changes at the meaningful
++// transitions (grab, charge-complete, dock), not every frame, so this doesn't force a 60fps
++// re-render the way the original canvas's `forceUpdate()` did.
++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
++import { useSharedValue, type SharedValue } from "react-native-reanimated";
++import * as Haptics from "expo-haptics";
++import type { CardRarity } from "../../vaultReveal/config/types";
++
++export type CardOpenStatus = "sealed" | "open" | "pulled";
++
++interface RarityTuning {
++  /** Where this rarity's resonance value settles while held — a GRAIL card should feel like it's
++   * fighting back; a CORE card barely registers. Same ranges as the design's own TIER table. */
++  res: number;
++  /** How many rings/motes worth of flourish this rarity earns on open — consumed by
++   * HoldToOpenFanReveal, not used inside the physics loop itself. */
++  rings: number;
++  motes: number;
++  dim: number;
++  note: string;
++}
++
++const TUNING: Record<CardRarity, RarityTuning> = {
++  CORE: { res: 0.24, rings: 0, motes: 0, dim: 0, note: "Faint. Common weight." },
++  PRIME: { res: 0.66, rings: 1, motes: 8, dim: 0.42, note: "Something is answering." },
++  GRAIL: { res: 0.97, rings: 2, motes: 16, dim: 0.74, note: "It is loud under your thumb." },
++};
++
++const DEFAULT_HOLD_MS = 1500;
++
++export interface HoldToOpenDeck {
++  status: CardOpenStatus[];
++  /** Index currently mid-charge (finger down, not yet complete), or null. */
++  heldIndex: number | null;
++  /** Index sitting open/flipped, waiting to be tapped closed into the tray, or null. */
++  openIndex: number | null;
++  /** True only for the single card a press is currently allowed to grab (top of the sealed
++   * stack) — every other sealed card is inert until this one is dealt with. */
++  isGrabbable: (i: number) => boolean;
++  chargeSV: SharedValue<number>;
++  liftSV: SharedValue<number>;
++  jitterSV: SharedValue<number>;
++  resSV: SharedValue<number>;
++  /** Rarity flavor for whichever card is currently held or open — for the resonance/tell copy
++   * and ring/mote counts. Null when nothing is in flight. */
++  activeTuning: RarityTuning | null;
++  revealedCount: number;
++  total: number;
++  done: boolean;
++  grab: (i: number) => void;
++  release: () => void;
++  dock: () => void;
++  /** Escape hatch for an impatient user — same spirit as the old "tap to reveal faster" link the
++   * timer-based reveal had. Instantly settles every remaining card into the tray. */
++  revealAll: () => void;
++}
++
++export function useHoldToOpenDeck(rarities: CardRarity[], holdMs: number = DEFAULT_HOLD_MS): HoldToOpenDeck {
++  const total = rarities.length;
++  const [status, setStatus] = useState<CardOpenStatus[]>(() => rarities.map(() => "sealed"));
++  const [heldIndex, setHeldIndex] = useState<number | null>(null);
++  const [openIndex, setOpenIndex] = useState<number | null>(null);
++
++  const chargeSV = useSharedValue(0);
++  const liftSV = useSharedValue(0);
++  const jitterSV = useSharedValue(0);
++  const resSV = useSharedValue(0);
++
++  // The one raw mutable field in this hook, mirroring the design's this.holdId — deliberately
++  // NOT a second source of truth for "is a card open" (status alone answers that); this only
++  // tracks "is a card mid-charge right now," which needs to survive many charge-loop ticks
++  // without forcing a re-render on every one of them.
++  const heldRef = useRef<number | null>(null);
++  const rafRef = useRef<number | null>(null);
++  const prevTimeRef = useRef(0);
++
++  const tuning = useMemo(() => rarities.map((r) => TUNING[r]), [rarities]);
++  const statusRef = useRef(status);
++  statusRef.current = status;
++
++  const topSealedIndex = useCallback(() => statusRef.current.findIndex((s) => s === "sealed"), []);
++
++  const isGrabbable = useCallback((i: number) => status[i] === "sealed" && topSealedIndex() === i, [status, topSealedIndex]);
++
++  const loop = useCallback(
++    (now: number) => {
++      const dt = Math.min(0.05, (now - (prevTimeRef.current || now)) / 1000);
++      prevTimeRef.current = now;
++      const hi = heldRef.current;
++
++      if (hi != null) {
++        const res = tuning[hi].res;
++        let rate = 1 / (holdMs / 1000);
++        const c = chargeSV.value;
++        if (c > 0.6) rate *= 1 - 0.62 * res; // rare cards resist
++        if (res > 0.5 && c > 0.78 && c < 0.87) rate *= 0.2; // the stall
++        const nextCharge = Math.min(1, c + dt * rate);
++        chargeSV.value = nextCharge;
++        liftSV.value = liftSV.value + (1 - liftSV.value) * Math.min(1, dt * 7);
++        resSV.value = resSV.value + (res * (0.35 + 0.65 * nextCharge) - resSV.value) * Math.min(1, dt * 4.5);
++        jitterSV.value = Math.sin(now / (66 - res * 42)) * res * (0.05 + 0.05 * nextCharge) * nextCharge;
++
++        if (nextCharge >= 1) {
++          const opened = hi;
++          heldRef.current = null;
++          chargeSV.value = 0;
++          resSV.value = 0;
++          liftSV.value = 1;
++          setStatus((prev) => prev.map((s, idx) => (idx === opened ? "open" : s === "open" ? "sealed" : s)));
++          setOpenIndex(opened);
++          setHeldIndex(null);
++          const rarity = rarities[opened];
++          const feedback =
++            rarity === "GRAIL"
++              ? Haptics.NotificationFeedbackType.Success
++              : rarity === "PRIME"
++                ? Haptics.NotificationFeedbackType.Warning
++                : Haptics.NotificationFeedbackType.Success;
++          Haptics.notificationAsync(feedback);
++        }
++      } else {
++        chargeSV.value = Math.max(0, chargeSV.value - dt * 2.6);
++        resSV.value = Math.max(0, resSV.value - dt * 1.8);
++        jitterSV.value = jitterSV.value * Math.pow(0.02, dt);
++      }
++
++      rafRef.current = requestAnimationFrame(loop);
++    },
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++    [holdMs, tuning, rarities]
++  );
++
++  useEffect(() => {
++    prevTimeRef.current = 0;
++    rafRef.current = requestAnimationFrame(loop);
++    return () => {
++      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
++    };
++  }, [loop]);
++
++  const grab = useCallback(
++    (i: number) => {
++      if (openIndex != null || heldRef.current != null) return;
++      if (statusRef.current[i] !== "sealed" || topSealedIndex() !== i) return;
++      heldRef.current = i;
++      chargeSV.value = 0;
++      setHeldIndex(i);
++      Haptics.selectionAsync();
++    },
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++    [openIndex, topSealedIndex]
++  );
++
++  const release = useCallback(() => {
++    heldRef.current = null;
++    setHeldIndex(null);
++  }, []);
++
++  const dock = useCallback(() => {
++    if (openIndex == null) return;
++    liftSV.value = 0;
++    setStatus((prev) => prev.map((s) => (s === "open" ? "pulled" : s)));
++    setOpenIndex(null);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [openIndex]);
++
++  const revealAll = useCallback(() => {
++    heldRef.current = null;
++    chargeSV.value = 0;
++    liftSV.value = 0;
++    setHeldIndex(null);
++    setOpenIndex(null);
++    setStatus(rarities.map(() => "pulled"));
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [rarities]);
++
++  const activeIndex = heldIndex ?? openIndex;
++  const activeTuning = activeIndex != null ? tuning[activeIndex] : null;
++  const revealedCount = status.filter((s) => s !== "sealed").length;
++  const done = revealedCount === total && openIndex == null && heldIndex == null;
++
++  return {
++    status, heldIndex, openIndex, isGrabbable,
++    chargeSV, liftSV, jitterSV, resSV,
++    activeTuning, revealedCount, total, done,
++    grab, release, dock, revealAll,
++  };
++}
+diff --git a/app/src/engine/cards/vaultReveal/VaultCardFanReveal.tsx b/app/src/engine/cards/vaultReveal/VaultCardFanReveal.tsx
+index 40da958..530b951 100644
+--- a/app/src/engine/cards/vaultReveal/VaultCardFanReveal.tsx
++++ b/app/src/engine/cards/vaultReveal/VaultCardFanReveal.tsx
+@@ -1,277 +1,18 @@
+-// Vault Break's card-reveal step — the flat 2D screen that follows VaultTearStage. Replaces the
+-// swipe-left CardView/FinalCardView (borrowed from CardFlowEngine) with the fanned, overlapping
+-// collector-card spread from the original design handoff: every pulled card lays out in one held
+-// fan, and instead of a swipe gesture, each card turns face-up on its own timed cue — a played
+-// animation, not an input the user has to perform per card.
++// Vault Break's card-reveal step — the flat 2D screen that follows VaultTearStage. This tier's
++// own adapter/art bound onto the shared press-and-hold reveal engine
++// (../reveal/holdToOpen/HoldToOpenFanReveal.tsx — see that file's header for why the fan layout,
++// per-card rendering, and inspect sheet now live there instead of being duplicated per tier).
+ //
+ // The per-card art (name, real tier label, real live value, real 7-day drift sparkline, serial)
+-// is baked directly into each card's raster by cardArt.ts's drawCardFaceImage — this component
+-// only positions and flips those images, it draws none of that content itself.
+-import { useEffect, useMemo, useRef, useState } from "react";
+-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+-import * as Haptics from "expo-haptics";
+-import { Image } from "expo-image";
+-import { Canvas, Image as SkiaImage, type SkImage } from "@shopify/react-native-skia";
+-import Animated, {
+-  Easing,
+-  useAnimatedStyle,
+-  useSharedValue,
+-  withDelay,
+-  withTiming,
+-} from "react-native-reanimated";
++// is baked directly into each card's raster by cardArt.ts's drawCardFaceImage — this file only
++// adapts real pulled items into that art's VaultCardData shape and hands the pre-baked images to
++// the shared reveal screen.
++import { useMemo } from "react";
+ import type { PackSku, PulledOwnedItem } from "@grailhaus/shared";
+-import { fonts, spacing } from "../../../theme/tokens";
+-import { itemDetail as detailCopy } from "../../../content/copy";
+ import { vaultBreakPersonality } from "./config/vaultBreak.config";
+-import { VaultVignette } from "./ui/VaultVignette";
+ import { adaptPulledItemsToVaultDeck } from "./engine/adaptRealDeck";
+ import { CARD_ASPECT, drawCardFaceImage, drawCardVersoImage } from "./art/cardArt";
+-import type { VaultCardData } from "./config/types";
+-
+-/** Traits come off the catalog as a bullet-separated string, same convention CardDetailScreen
+- * splits on — reused here rather than re-derived so a "Rookie Icon • Bright Pull" traits string
+- * reads identically in both places. */
+-function splitTraits(traits: string | null): string[] {
+-  if (!traits) return [];
+-  return traits.split(/[•,]/).map((t) => t.trim()).filter(Boolean);
+-}
+-
+-const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
+-
+-// Timing for the automatic staged reveal — each card's turn, then a longer beat before the last
+-// (rarest, per orderedItems' commons-first sort) card so it reads as the moment being built to,
+-// then a settle pause before the Continue control appears.
+-const STAGGER_MS = 780;
+-const HERO_EXTRA_DELAY_MS = 500;
+-const SETTLE_AFTER_LAST_MS = 650;
+-
+-interface FanSlot {
+-  rotate: number;
+-  x: number;
+-  y: number;
+-  scale: number;
+-}
+-
+-function computeFanSlots(total: number, cardW: number, screenW: number): FanSlot[] {
+-  const center = (total - 1) / 2;
+-  const angleStep = total > 4 ? 8 : 10;
+-  const arcDrop = 9;
+-  const maxSpread = screenW - 56 - cardW;
+-  const xStep = total > 1 ? Math.min(cardW * 0.4, Math.max(18, maxSpread / (total - 1))) : 0;
+-  return Array.from({ length: total }, (_, i) => {
+-    const offset = i - center;
+-    const isHero = i === total - 1;
+-    return {
+-      rotate: offset * angleStep,
+-      x: offset * xStep,
+-      y: Math.abs(offset) * arcDrop - (isHero ? 20 : 0),
+-      scale: isHero ? 1.08 : 1,
+-    };
+-  });
+-}
+-
+-function FanCard({
+-  face,
+-  verso,
+-  photoUrl,
+-  slot,
+-  cardW,
+-  cardH,
+-  revealed,
+-  isHero,
+-  selected,
+-  dimmed,
+-  zIndex,
+-  onPress,
+-}: {
+-  face: SkImage;
+-  verso: SkImage;
+-  photoUrl: string | null;
+-  slot: FanSlot;
+-  cardW: number;
+-  cardH: number;
+-  revealed: boolean;
+-  isHero: boolean;
+-  selected: boolean;
+-  dimmed: boolean;
+-  zIndex: number;
+-  onPress: () => void;
+-}) {
+-  const settle = useSharedValue(0); // 0 = resting in the face-down deck stack, 1 = fanned into place
+-  const flip = useSharedValue(0); // 0 = verso showing, 1 = face showing
+-  const pop = useSharedValue(0); // 0 = sitting in the fan, 1 = pulled out front-and-center
+-  const dim = useSharedValue(0);
+-
+-  useEffect(() => {
+-    if (!revealed) return;
+-    const ease = Easing.out(Easing.cubic);
+-    settle.value = withTiming(1, { duration: 520, easing: ease });
+-    flip.value = withDelay(120, withTiming(1, { duration: 420, easing: Easing.inOut(Easing.cubic) }));
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [revealed]);
+-
+-  useEffect(() => {
+-    pop.value = withTiming(selected ? 1 : 0, { duration: 280, easing: Easing.out(Easing.cubic) });
+-  }, [selected, pop]);
+-
+-  useEffect(() => {
+-    dim.value = withTiming(dimmed ? 1 : 0, { duration: 220 });
+-  }, [dimmed, dim]);
+-
+-  const containerStyle = useAnimatedStyle(() => {
+-    const baseX = settle.value * slot.x;
+-    const baseY = (1 - settle.value) * 90 + settle.value * slot.y;
+-    const baseRotate = settle.value * slot.rotate;
+-    const baseScale = 0.86 + settle.value * (slot.scale - 0.86);
+-    // Pulled-out target: centered, level, lifted above the rest of the fan, noticeably larger.
+-    const popY = -cardH * 0.3;
+-    const popScale = slot.scale * 1.32;
+-    return {
+-      opacity: 1 - dim.value * 0.72,
+-      transform: [
+-        { translateX: baseX * (1 - pop.value) },
+-        { translateY: baseY + pop.value * (popY - baseY) },
+-        { rotate: `${baseRotate * (1 - pop.value)}deg` },
+-        { scale: baseScale + pop.value * (popScale - baseScale) },
+-      ],
+-    };
+-  });
+-
+-  const versoStyle = useAnimatedStyle(() => ({
+-    transform: [{ perspective: 900 }, { rotateY: `${flip.value * 180}deg` }],
+-    opacity: flip.value > 0.5 ? 0 : 1,
+-  }));
+-  const faceStyle = useAnimatedStyle(() => ({
+-    transform: [{ perspective: 900 }, { rotateY: `${(flip.value - 1) * 180}deg` }],
+-    opacity: flip.value > 0.5 ? 1 : 0,
+-  }));
+-
+-  return (
+-    <Animated.View
+-      style={[
+-        styles.cardSlot,
+-        { width: cardW, height: cardH, zIndex, marginLeft: -cardW / 2, marginTop: -cardH / 2 },
+-        containerStyle,
+-      ]}
+-    >
+-      <Pressable style={StyleSheet.absoluteFill} onPress={onPress} disabled={!revealed} hitSlop={4}>
+-        <Animated.View style={[styles.face, versoStyle]}>
+-          <Canvas style={StyleSheet.absoluteFill}>
+-            <SkiaImage image={verso} x={0} y={0} width={cardW} height={cardH} fit="cover" />
+-          </Canvas>
+-        </Animated.View>
+-        <Animated.View style={[styles.face, faceStyle]}>
+-          {photoUrl ? (
+-            // Just the real card, nothing else — no ribbon, no value block, no serial. That info
+-            // hasn't disappeared, it moved to the tap-to-inspect panel (DescriptionPanel) every
+-            // revealed card already opens on press; here it would just be clutter over the actual
+-            // card. CARD_ASPECT was already chosen to match a real trading card's aspect ratio, so
+-            // "cover" fills the frame edge-to-edge with no visible crop.
+-            <Image
+-              source={photoUrl}
+-              style={StyleSheet.absoluteFill}
+-              contentFit="cover"
+-              transition={150}
+-              cachePolicy="memory-disk"
+-            />
+-          ) : (
+-            // No catalog texture for this item (rare) — fall back to the procedural placeholder
+-            // art rather than showing nothing.
+-            <Canvas style={StyleSheet.absoluteFill}>
+-              <SkiaImage image={face} x={0} y={0} width={cardW} height={cardH} fit="cover" />
+-            </Canvas>
+-          )}
+-        </Animated.View>
+-      </Pressable>
+-    </Animated.View>
+-  );
+-}
+-
+-function DescriptionPanel({
+-  item,
+-  card,
+-  tierColorHex,
+-  visible,
+-  onClose,
+-}: {
+-  item: PulledOwnedItem | null;
+-  card: VaultCardData | null;
+-  tierColorHex: string;
+-  visible: boolean;
+-  onClose: () => void;
+-}) {
+-  const progress = useSharedValue(0);
+-  useEffect(() => {
+-    progress.value = withTiming(visible ? 1 : 0, { duration: 260, easing: Easing.out(Easing.cubic) });
+-  }, [visible, progress]);
+-
+-  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.72 }));
+-  const sheetStyle = useAnimatedStyle(() => ({
+-    opacity: progress.value,
+-    transform: [{ translateY: (1 - progress.value) * 40 }],
+-  }));
+-
+-  if (!item || !card) return null;
+-  const traits = splitTraits(item.traits);
+-  const up = card.delta >= 0;
+-
+-  return (
+-    <>
+-      <Animated.View
+-        pointerEvents={visible ? "auto" : "none"}
+-        style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}
+-      >
+-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+-      </Animated.View>
+-      <Animated.View pointerEvents={visible ? "auto" : "none"} style={[styles.sheet, sheetStyle]}>
+-        <View style={styles.sheetHeader}>
+-          <View style={styles.sheetHeaderText}>
+-            <Text style={styles.sheetName}>{(item.cardTitle ?? item.name).toUpperCase()}</Text>
+-            {item.pokemonName ? <Text style={styles.sheetSubName}>{item.pokemonName}</Text> : null}
+-          </View>
+-          <Pressable style={styles.closeButton} onPress={onClose} hitSlop={10}>
+-            <Text style={styles.closeGlyph}>×</Text>
+-          </Pressable>
+-        </View>
+-
+-        <View style={styles.sheetRow}>
+-          <View style={styles.sheetSpec}>
+-            <Text style={styles.sheetLabel}>{detailCopy.rarity}</Text>
+-            <Text style={[styles.sheetValue, { color: tierColorHex }]}>{card.rarityLabel}</Text>
+-          </View>
+-          <View style={styles.sheetSpec}>
+-            <Text style={styles.sheetLabel}>{detailCopy.collectionLabel}</Text>
+-            <Text style={styles.sheetValue}>{card.edition}</Text>
+-          </View>
+-          <View style={styles.sheetSpec}>
+-            <Text style={styles.sheetLabel}>SERIAL</Text>
+-            <Text style={styles.sheetValue}>{card.serial}</Text>
+-          </View>
+-        </View>
+-
+-        {traits.length > 0 && (
+-          <View style={styles.traitRow}>
+-            {traits.map((t) => (
+-              <View key={t} style={styles.traitChip}>
+-                <Text style={styles.traitText}>{t}</Text>
+-              </View>
+-            ))}
+-          </View>
+-        )}
+-
+-        <View style={styles.valueRow}>
+-          <View>
+-            <Text style={styles.sheetLabel}>{detailCopy.estimatedValue}</Text>
+-            <Text style={styles.sheetValueBig}>{card.value}</Text>
+-          </View>
+-          <Text style={[styles.deltaText, { color: up ? "#7ed6a4" : "#d67e8c" }]}>
+-            {up ? "▲" : "▼"} {Math.abs(card.delta).toFixed(1)}% · 7D
+-          </Text>
+-        </View>
+-      </Animated.View>
+-    </>
+-  );
+-}
++import { HoldToOpenFanReveal } from "../reveal/holdToOpen/HoldToOpenFanReveal";
+ 
+ export function VaultCardFanReveal({
+   items,
+@@ -282,226 +23,27 @@ export function VaultCardFanReveal({
+   sku: PackSku;
+   onDone: () => void;
+ }) {
+-  const { width, height } = useWindowDimensions();
+-  const deck: VaultCardData[] = useMemo(() => adaptPulledItemsToVaultDeck(items, sku), [items, sku]);
+-  const total = deck.length;
+-
++  const deck = useMemo(() => adaptPulledItemsToVaultDeck(items, sku), [items, sku]);
+   const verso = useMemo(() => drawCardVersoImage(), []);
+   // Only ever actually shown for an item with no real catalog photo (rare) — every card with one
+-  // shows that instead, full-bleed, no chrome (see FanCard below).
++  // shows that instead, full-bleed, no chrome.
+   const faces = useMemo(() => deck.map((card) => drawCardFaceImage(card)), [deck]);
+ 
+-  const cardW = Math.min(168, width * 0.4);
+-  const cardH = cardW / CARD_ASPECT;
+-  const slots = useMemo(() => computeFanSlots(total, cardW, width), [total, cardW, width]);
+-
+-  const [revealedCount, setRevealedCount] = useState(0);
+-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+-
+-  function handleCardPress(i: number) {
+-    Haptics.selectionAsync();
+-    setSelectedIndex((cur) => (cur === i ? null : i));
+-  }
+-
+-  useEffect(() => {
+-    timers.current.forEach(clearTimeout);
+-    timers.current = [];
+-    let elapsed = 400;
+-    for (let i = 0; i < total; i++) {
+-      const isHero = i === total - 1;
+-      elapsed += i === 0 ? 0 : STAGGER_MS + (isHero ? HERO_EXTRA_DELAY_MS : 0);
+-      const at = elapsed;
+-      timers.current.push(
+-        setTimeout(() => {
+-          setRevealedCount((c) => Math.max(c, i + 1));
+-          const style = isHero
+-            ? Haptics.ImpactFeedbackStyle.Heavy
+-            : deck[i].rarity === "PRIME"
+-              ? Haptics.ImpactFeedbackStyle.Medium
+-              : Haptics.ImpactFeedbackStyle.Light;
+-          Haptics.impactAsync(style);
+-          if (isHero) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+-        }, at)
+-      );
+-    }
+-    return () => timers.current.forEach(clearTimeout);
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [total]);
+-
+-  const allRevealed = revealedCount >= total;
+-  const [showContinue, setShowContinue] = useState(false);
+-  useEffect(() => {
+-    if (!allRevealed) return;
+-    const t = setTimeout(() => setShowContinue(true), SETTLE_AFTER_LAST_MS);
+-    return () => clearTimeout(t);
+-  }, [allRevealed]);
+-
+-  function skipToEnd() {
+-    timers.current.forEach(clearTimeout);
+-    setRevealedCount(total);
+-  }
+-
+-  const tierColorHex =
+-    selectedIndex !== null
+-      ? sku.rarityTiers.find((t) => t.level === items[selectedIndex].rarityTierLevel)?.colorHex ?? "#e8cf9a"
+-      : "#e8cf9a";
+-
+-  const continueOpacity = useSharedValue(0);
+-  useEffect(() => {
+-    continueOpacity.value = withTiming(showContinue ? 1 : 0, { duration: 320 });
+-  }, [showContinue, continueOpacity]);
+-  const continueStyle = useAnimatedStyle(() => ({
+-    opacity: continueOpacity.value,
+-    transform: [{ translateY: (1 - continueOpacity.value) * 10 }],
+-  }));
+-
+-  const totalValueCents = items
+-    .slice(0, revealedCount)
+-    .reduce((sum, item) => sum + item.currentValueCents, 0);
+-
+   return (
+-    <View style={styles.root}>
+-      <VaultVignette width={width} height={height} />
+-
+-      <View style={styles.header}>
+-        <Text style={styles.kicker}>{vaultBreakPersonality.copy.kicker}</Text>
+-        <Text style={styles.title}>Your Pull</Text>
+-        <Text style={styles.counter}>{Math.min(revealedCount, total)} / {total} REVEALED</Text>
+-      </View>
+-
+-      <View style={styles.fanArea}>
+-        {deck.map((_, i) => (
+-          <FanCard
+-            key={i}
+-            face={faces[i]}
+-            verso={verso}
+-            photoUrl={items[i].textureUrl}
+-            slot={slots[i]}
+-            cardW={cardW}
+-            cardH={cardH}
+-            revealed={i < revealedCount}
+-            isHero={i === total - 1}
+-            selected={selectedIndex === i}
+-            dimmed={selectedIndex !== null && selectedIndex !== i}
+-            zIndex={selectedIndex === i ? total + 2 : i === total - 1 ? total + 1 : i}
+-            onPress={() => handleCardPress(i)}
+-          />
+-        ))}
+-      </View>
+-
+-      <View style={styles.footer}>
+-        {!showContinue ? (
+-          <Pressable onPress={skipToEnd} disabled={allRevealed} hitSlop={10}>
+-            <Text style={styles.hint}>{allRevealed ? "" : "Tap here to reveal faster"}</Text>
+-          </Pressable>
+-        ) : (
+-          <Animated.View style={[styles.continueWrap, continueStyle]}>
+-            <Text style={styles.totalLabel}>
+-              TOTAL VALUE <Text style={styles.totalValue}>${(totalValueCents / 100).toFixed(0)}</Text>
+-            </Text>
+-            <Pressable style={styles.continueButton} onPress={onDone}>
+-              <Text style={styles.continueLabel}>Continue</Text>
+-            </Pressable>
+-          </Animated.View>
+-        )}
+-      </View>
+-
+-      <DescriptionPanel
+-        item={selectedIndex !== null ? items[selectedIndex] : null}
+-        card={selectedIndex !== null ? deck[selectedIndex] : null}
+-        tierColorHex={tierColorHex}
+-        visible={selectedIndex !== null}
+-        onClose={() => setSelectedIndex(null)}
+-      />
+-    </View>
++    <HoldToOpenFanReveal
++      items={items}
++      sku={sku}
++      deck={deck}
++      faces={faces}
++      verso={verso}
++      cardAspect={CARD_ASPECT}
++      palette={{
++        kicker: vaultBreakPersonality.copy.kicker,
++        accentHex: "#e8cf9a",
++        accentRGB: "232,207,162",
++        vignetteGlow: "rgba(92,52,158,0.20)",
++      }}
++      onDone={onDone}
++    />
+   );
+ }
+-
+-const styles = StyleSheet.create({
+-  root: { flex: 1, backgroundColor: "#05030a" },
+-  header: { alignItems: "center", paddingTop: 64, gap: 6 },
+-  kicker: {
+-    fontFamily: mono, fontSize: 10, letterSpacing: 3.4, color: "#b99b57", textTransform: "uppercase",
+-  },
+-  title: { fontFamily: fonts.black, fontSize: 26, color: "#f4ece0" },
+-  counter: {
+-    fontFamily: mono, fontSize: 10, letterSpacing: 2, color: "rgba(244,236,224,0.5)", marginTop: 2,
+-  },
+-  fanArea: { flex: 1, alignItems: "center", justifyContent: "center" },
+-  cardSlot: { position: "absolute", left: "50%", top: "50%" },
+-  face: {
+-    position: "absolute",
+-    top: 0, left: 0, right: 0, bottom: 0,
+-    borderRadius: 12,
+-    overflow: "hidden",
+-    borderWidth: 1,
+-    borderColor: "rgba(232,207,162,0.35)",
+-    backfaceVisibility: "hidden",
+-  },
+-  footer: { alignItems: "center", paddingBottom: 40, minHeight: 96, justifyContent: "flex-end", gap: spacing.md },
+-  hint: {
+-    fontFamily: mono, fontSize: 10, letterSpacing: 2.6, textTransform: "uppercase",
+-    color: "rgba(244,236,224,0.4)",
+-  },
+-  continueWrap: { alignItems: "center", gap: spacing.md },
+-  totalLabel: {
+-    fontFamily: mono, fontSize: 10.5, letterSpacing: 2, color: "rgba(244,236,224,0.5)",
+-  },
+-  totalValue: { fontFamily: fonts.bold, fontSize: 13, color: "#f4ece0" },
+-  continueButton: {
+-    height: 56,
+-    minWidth: 220,
+-    borderRadius: 16,
+-    borderWidth: 1.5,
+-    borderColor: "rgba(232,207,162,0.5)",
+-    backgroundColor: "rgba(232,207,162,0.1)",
+-    alignItems: "center",
+-    justifyContent: "center",
+-    paddingHorizontal: 24,
+-  },
+-  continueLabel: { fontFamily: fonts.black, fontSize: 15, letterSpacing: 1, color: "#f4ece0" },
+-
+-  backdrop: { backgroundColor: "#000000" },
+-  sheet: {
+-    position: "absolute",
+-    left: 16,
+-    right: 16,
+-    bottom: 32,
+-    borderRadius: 20,
+-    padding: 20,
+-    backgroundColor: "#120a24",
+-    borderWidth: 1,
+-    borderColor: "rgba(232,207,162,0.28)",
+-    gap: 16,
+-  },
+-  sheetHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+-  sheetHeaderText: { flex: 1, paddingRight: 12, gap: 3 },
+-  sheetName: { fontFamily: fonts.black, fontSize: 18, color: "#f4ece0" },
+-  sheetSubName: { fontFamily: fonts.medium, fontSize: 12.5, color: "rgba(244,236,224,0.55)" },
+-  closeButton: {
+-    width: 28, height: 28, borderRadius: 14,
+-    alignItems: "center", justifyContent: "center",
+-    backgroundColor: "rgba(255,255,255,0.08)",
+-  },
+-  closeGlyph: { fontSize: 18, lineHeight: 18, color: "rgba(244,236,224,0.8)" },
+-  sheetRow: { flexDirection: "row", justifyContent: "space-between" },
+-  sheetSpec: { gap: 3 },
+-  sheetLabel: {
+-    fontFamily: mono, fontSize: 8.5, letterSpacing: 1.6, textTransform: "uppercase",
+-    color: "rgba(244,236,224,0.44)",
+-  },
+-  sheetValue: { fontFamily: fonts.bold, fontSize: 12.5, color: "#f4ece0" },
+-  traitRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+-  traitChip: {
+-    borderWidth: 1, borderColor: "rgba(232,207,162,0.3)", backgroundColor: "rgba(232,207,162,0.08)",
+-    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5,
+-  },
+-  traitText: { fontFamily: fonts.semibold, fontSize: 10.5, color: "#e8cf9a" },
+-  valueRow: {
+-    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end",
+-    borderTopWidth: 1, borderTopColor: "rgba(232,207,162,0.16)", paddingTop: 14,
+-  },
+-  sheetValueBig: { fontFamily: fonts.black, fontSize: 24, color: "#f4ece0", marginTop: 2 },
+-  deltaText: { fontFamily: fonts.bold, fontSize: 12.5 },
+-});

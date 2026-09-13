@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "GrailHaus",
+    "slug": "grailhaus",
+    "scheme": "grailhaus",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#060608",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.grailhaus.app",
+      "infoPlist": {
+        "UIViewControllerBasedStatusBarAppearance": false
+      }
+    },
+    "android": {
+      "package": "com.grailhaus.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#060608"
+      }
+    },
+    "plugins": ["expo-gl"]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "GrailHaus",
+    "slug": "grailhaus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0614",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.grailhaus.app"
+    }
+  }
+}

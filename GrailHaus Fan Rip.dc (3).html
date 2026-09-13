@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#0a0810;overflow:hidden;-webkit-user-select:none;user-select:none}
+  a{color:#c9b6ff;text-decoration:none}
+  a:hover{color:#e7dcff}
+  @keyframes gh-sheen{0%{transform:translateX(-120%) rotate(8deg)}100%{transform:translateX(220%) rotate(8deg)}}
+  @keyframes gh-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes gh-ringA{0%{opacity:0;transform:translate(-50%,-50%) scale(.35)}18%{opacity:.9}100%{opacity:0;transform:translate(-50%,-50%) scale(2.5)}}
+  @keyframes gh-ringB{0%{opacity:0;transform:translate(-50%,-50%) scale(.35)}18%{opacity:.9}100%{opacity:0;transform:translate(-50%,-50%) scale(2.5)}}
+  @keyframes gh-wordA{0%{opacity:0;letter-spacing:.1em}30%{opacity:.85}100%{opacity:.5;letter-spacing:.34em}}
+  @keyframes gh-wordB{0%{opacity:0;letter-spacing:.1em}30%{opacity:.85}100%{opacity:.5;letter-spacing:.34em}}
+  @keyframes gh-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+  @keyframes gh-flyA{0%{opacity:0;transform:translateY(0) scale(.3)}14%{opacity:1}100%{opacity:0;transform:translateY(-172px) scale(1.15)}}
+  @keyframes gh-flyB{0%{opacity:0;transform:translateY(0) scale(.3)}14%{opacity:1}100%{opacity:0;transform:translateY(-172px) scale(1.15)}}
+  @keyframes gh-wave{to{transform:translate3d(-50%,0,0)}}
+  @keyframes gh-bob{0%,100%{transform:skewX(0deg) translateY(0)}50%{transform:skewX(1.6deg) translateY(-3px)}}
+  @keyframes gh-heat{0%,100%{transform:translateY(0) scaleY(1)}50%{transform:translateY(-2px) scaleY(1.03)}}
+  @keyframes gh-flick{0%,100%{opacity:.9}18%{opacity:.5}37%{opacity:1}58%{opacity:.66}79%{opacity:.95}}
+  @keyframes gh-sway{0%,100%{transform:skewX(-2deg)}50%{transform:skewX(2deg)}}
+  @keyframes gh-strobe{0%,100%{opacity:.14}5%{opacity:.95}8%{opacity:.18}50%{opacity:.14}54%{opacity:.8}58%{opacity:.18}}
+  @keyframes gh-warp{0%,100%{transform:scale(1) rotate(0deg);border-radius:46% 54% 60% 40%}50%{transform:scale(1.1) rotate(9deg);border-radius:58% 42% 40% 60%}}
+  @keyframes gh-drip{0%{transform:translateY(-40%);opacity:0}22%{opacity:.85}100%{transform:translateY(130%);opacity:0}}
+  @keyframes gh-leaf{0%{transform:translate3d(0,-18%,0) rotate(-12deg);opacity:0}18%{opacity:.9}100%{transform:translate3d(6%,116%,0) rotate(26deg);opacity:0}}
+  @keyframes gh-grow{0%{transform:scaleY(.72) translateY(12%);opacity:.45}100%{transform:scaleY(1) translateY(0);opacity:.95}}
+  @keyframes gh-swell{0%,100%{transform:translateY(2%) scaleY(1)}50%{transform:translateY(-3%) scaleY(1.06)}}
+  @keyframes gh-shear{0%,100%{transform:skewY(0deg) translateX(0)}50%{transform:skewY(-1.2deg) translateX(-2%)}}
+  @keyframes gh-pan{from{transform:translate3d(0,0,0)}to{transform:translate3d(-33.33%,0,0)}}
+  @keyframes gh-panY{from{transform:translate3d(0,-33.33%,0)}to{transform:translate3d(0,0,0)}}
+  @keyframes gh-breathe{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.14);opacity:1}}
+  @keyframes gh-turn{to{transform:rotate(360deg)}}
+  @keyframes gh-emb{0%{transform:translateY(18%);opacity:0}22%{opacity:.95}100%{transform:translateY(-88%);opacity:0}}
+  @keyframes gh-glint{0%,100%{opacity:.35;transform:translateX(-6%)}50%{opacity:1;transform:translateX(6%)}}
+</style>
+</helmet>
+
+<div style="position:relative;width:100%;height:100vh;min-height:520px;overflow:hidden;background:radial-gradient(120% 90% at 50% 8%,#181031 0%,#0d0918 46%,#070510 100%);font-family:Sora,system-ui,sans-serif;color:#efeaf7;touch-action:none" onPointerDown="{{ onSurface }}">
+
+  <div style="{{ atmos1 }}"></div>
+  <div style="{{ atmos2 }}"></div>
+  <div style="{{ ambient }}"></div>
+  <div style="position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:soft-light;background-image:radial-gradient(rgba(255,255,255,.11) 1px,rgba(0,0,0,0) 1px);background-size:3px 3px"></div>
+
+  <div style="{{ headStyle }}">
+    <div style="{{ headLeft }}">
+      <div style="display:flex;align-items:center;gap:9px;font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,182,255,.8)">
+        <span style="width:18px;height:1px;background:rgba(201,182,255,.5);display:block"></span>Street Rip · Sealed
+      </div>
+      <div style="margin-top:10px;font-size:clamp(24px,6vw,34px);font-weight:200;letter-spacing:-.01em;line-height:1">Hold to open.</div>
+      <div style="margin-top:8px;font:400 9px/1.6 'JetBrains Mono',monospace;letter-spacing:.14em;color:rgba(239,234,247,.42)">5 CARDS · 80 CORE / 51 PRIME / 26 GRAIL IN SET</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:104px">
+      <div style="font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.28em;text-transform:uppercase;color:rgba(239,234,247,.42)">Pulled</div>
+      <div style="{{ runTotalStyle }}">{{ runTotal }}</div>
+      <div style="font:400 9px/1 'JetBrains Mono',monospace;letter-spacing:.14em;color:rgba(239,234,247,.34)">{{ counter }} OPEN</div>
+    </div>
+  </div>
+
+  <div style="{{ spot }}"></div>
+  <div style="{{ wordStyle }}">{{ word }}</div>
+
+  <div style="position:absolute;left:0;right:0;top:clamp(76px,12%,120px);bottom:126px">
+    <div style="{{ beams }}"></div>
+    <div style="{{ ring1 }}"></div>
+    <div style="{{ ring2 }}"></div>
+    <div style="position:absolute;left:50%;top:50%;width:0;height:0;z-index:26;pointer-events:none">
+      <sc-for list="{{ motes }}" as="m" hint-placeholder-count="0">
+        <div style="{{ m.arm }}"><div style="{{ m.dot }}"></div></div>
+      </sc-for>
+    </div>
+
+    <sc-for list="{{ slots }}" as="c" hint-placeholder-count="5">
+      <div style="{{ c.wrap }}" data-slot="{{ c.id }}">
+        <div style="{{ c.floor }}"></div>
+        <div style="{{ c.glow }}"></div>
+        <div style="{{ c.envBack }}"></div>
+        <div style="{{ c.flip }}">
+
+         <div style="{{ c.backHide }}">
+          <div style="{{ c.backBody }}">
+            <div style="{{ c.backElem }}"></div>
+            <div style="position:absolute;inset:11px;border:1px solid rgba(255,255,255,.08);border-radius:9px"></div>
+            <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font:500 9px/1.9 'JetBrains Mono',monospace;letter-spacing:.42em;text-transform:uppercase;color:rgba(255,255,255,.5)">GRAIL<br>HAUS</div>
+            <div style="{{ c.backSeal }}">{{ c.backLabel }}</div>
+            <div style="{{ c.sheen }}"></div>
+          </div>
+         </div>
+
+         <div style="{{ c.faceHide }}">
+          <div style="{{ c.faceBody }}">
+            <div style="{{ c.tint }}"></div>
+            <div style="{{ c.edgeWord }}">{{ c.typeShort }}</div>
+            <div style="position:relative;display:flex;flex-direction:column;height:100%;box-sizing:border-box;padding:5.5cqw 5.5cqw 5cqw 10.5cqw;gap:3.6cqw">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+                <span style="{{ c.typeChip }}">{{ c.tier }}</span>
+                <span style="font:400 clamp(8px,2.6cqw,11px)/1 'JetBrains Mono',monospace;letter-spacing:.18em;color:rgba(255,255,255,.5);white-space:nowrap">{{ c.num }}</span>
+              </div>
+              <div style="{{ c.art }}">
+                <div style="{{ c.elem1 }}"></div>
+                <div style="{{ c.elem2 }}"></div>
+                <div style="position:absolute;left:4cqw;right:4cqw;top:3.6cqw;display:flex;justify-content:space-between;gap:6px;font:400 clamp(8px,2.6cqw,11px)/1 'JetBrains Mono',monospace;letter-spacing:.18em;color:rgba(255,255,255,.6);white-space:nowrap"><span>{{ c.dex }}</span><span>{{ c.gen }}</span></div>
+                <div style="{{ c.monBig }}">{{ c.mon }}</div>
+              </div>
+              <div>
+                <div style="font-size:clamp(17px,8cqw,34px);font-weight:200;letter-spacing:-.015em;line-height:1.02;text-wrap:balance">{{ c.title }}</div>
+                <div style="{{ c.rule }}"></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:400 clamp(9px,2.9cqw,13px)/1 'JetBrains Mono',monospace;letter-spacing:.14em">
+                  <span style="color:rgba(255,255,255,.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.collection }}</span>
+                  <span style="{{ c.valTone }}">{{ c.value }}</span>
+                </div>
+              </div>
+            </div>
+            <div style="{{ c.foil }}"></div>
+            <div style="{{ c.rake }}"></div>
+            <div style="{{ c.grain }}"></div>
+            <div style="{{ c.vign }}"></div>
+          </div>
+         </div>
+
+        </div>
+        <div style="{{ c.envFront }}"></div>
+        <div style="{{ c.envFront2 }}"></div>
+        <div style="{{ c.lockTrack }}"><div style="{{ c.lockFill }}"></div></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;z-index:70;padding:0 22px 16px;display:flex;flex-direction:column;align-items:center;gap:9px;pointer-events:none">
+    <div style="display:flex;align-items:flex-end;gap:9px">
+      <sc-for list="{{ tray }}" as="t" hint-placeholder-count="5">        <div style="{{ t.box }}">
+          <div style="{{ t.bar }}"></div>
+          <div style="{{ t.numStyle }}">{{ t.num }}</div>
+          <div style="{{ t.nameStyle }}">{{ t.name }}</div>
+          <div style="{{ t.typeStyle }}">{{ t.type }}</div>
+          <div style="{{ t.valStyle }}">{{ t.value }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="{{ tellWrap }}">
+      <div style="display:flex;justify-content:space-between;font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.26em;text-transform:uppercase;color:rgba(239,234,247,.5)"><span>Resonance</span><span style="{{ tellNumTone }}">{{ tellNum }}</span></div>
+      <div style="margin-top:9px;height:2px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden"><div style="{{ tellFill }}"></div></div>
+      <div style="margin-top:9px;font:400 9px/1.5 'JetBrains Mono',monospace;letter-spacing:.16em;color:rgba(239,234,247,.34)">{{ tellNote }}</div>
+    </div>
+    <div style="{{ hintStyle }}">{{ hint }}</div>
+  </div>
+
+  <sc-if value="{{ reviewing }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:28px;background:radial-gradient(70% 60% at 50% 50%,rgba(10,8,18,.88),rgba(7,5,14,.97));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);animation:gh-rise .5s cubic-bezier(.16,.7,.2,1) both">
+      <div style="font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,182,255,.8)">The five</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+        <sc-for list="{{ reviewCards }}" as="r" hint-placeholder-count="5">
+          <div style="{{ r.card }}">
+            <div style="{{ r.tag }}">{{ r.tier }}</div>
+            <div style="{{ r.typeStyle }}">{{ r.type }}</div>
+            <div style="margin-top:auto;font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.14em;color:rgba(239,234,247,.6)">{{ r.mon }}</div>
+            <div style="margin-top:3px;font-size:14px;font-weight:300;line-height:1.15;text-wrap:pretty">{{ r.title }}</div>
+            <div style="{{ r.val }}">{{ r.value }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <button style="padding:14px 22px;border:1px solid rgba(255,255,255,.18);border-radius:11px;background:rgba(255,255,255,.05);color:rgba(239,234,247,.86);font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.26em;text-transform:uppercase;cursor:pointer" style-hover="background:rgba(255,255,255,.1)" onClick="{{ backToSummary }}">Back to totals</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ done }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:28px;background:radial-gradient(70% 60% at 50% 50%,rgba(10,8,18,.72),rgba(7,5,14,.95));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);animation:gh-rise .6s cubic-bezier(.16,.7,.2,1) both">
+      <div style="width:min(420px,100%);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:30px 26px;background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.02));box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.24);text-align:center">
+        <div style="font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,182,255,.8)">Pack closed</div>
+        <div style="margin-top:14px;font-size:clamp(30px,8vw,42px);font-weight:200;letter-spacing:-.02em;line-height:1">{{ total }}</div>
+        <div style="margin-top:8px;font:400 10px/1.6 'JetBrains Mono',monospace;letter-spacing:.14em;color:rgba(239,234,247,.44)">{{ verdict }}</div>
+        <div style="margin-top:22px;display:flex;flex-direction:column;gap:9px">
+          <button style="padding:15px 20px;border:0;border-radius:11px;background:linear-gradient(180deg,#efe6ff,#c3adf3);color:#1a1030;font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.26em;text-transform:uppercase;cursor:pointer" style-hover="filter:brightness(1.06)" onClick="{{ again }}">Rip another pack</button>
+          <button style="padding:15px 20px;border:1px solid rgba(255,255,255,.18);border-radius:11px;background:rgba(255,255,255,.04);color:rgba(239,234,247,.8);font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.26em;text-transform:uppercase;cursor:pointer" style-hover="background:rgba(255,255,255,.09)" onClick="{{ review }}">Review the five</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;holdMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1800,&quot;min&quot;:700,&quot;max&quot;:2600,&quot;step&quot;:100,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Pacing&quot;},&quot;showTell&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Suspense&quot;},&quot;grailChance&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:0.85,&quot;min&quot;:0,&quot;max&quot;:1,&quot;step&quot;:0.02,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Suspense&quot;}}">
+// [mon, title, tier, collection, num, type, gen, dex, dollars] — from GrailHaus_Pokemon_Card_Catalog.xlsx
+const ROWS = [
+  ['Pikachu', 'Neon Pulse', 'CORE', 'Neon Archive', 'GH-C01-V2', 'Electric', 'Gen I', '#025', 12],
+  ['Eevee', 'Unwritten Form', 'CORE', 'Twilight Run', 'GH-C02-V3', 'Normal', 'Gen I', '#133', 18],
+  ['Bulbasaur', 'Verdant Promise', 'CORE', 'Twilight Run', 'GH-C03-V3', 'Grass / Poison', 'Gen I', '#001', 19],
+  ['Squirtle', 'Harbor Flash', 'CORE', 'Neon Archive', 'GH-C04-V2', 'Water', 'Gen I', '#007', 15],
+  ['Charmander', 'Streetfire', 'CORE', 'Neon Archive', 'GH-C05-V2', 'Fire', 'Gen I', '#004', 16],
+  ['Psyduck', 'Hidden Current', 'CORE', 'Twilight Run', 'GH-C06-V3', 'Water', 'Gen I', '#054', 22],
+  ['Snorlax', 'Heavy Crown', 'CORE', 'Twilight Run', 'GH-C07-V3', 'Normal', 'Gen I', '#143', 23],
+  ['Ditto', 'Perfect Copy', 'CORE', 'Twilight Run', 'GH-C08-V3', 'Normal', 'Gen I', '#132', 24],
+  ['Vulpix', 'Velvet Flame', 'CORE', 'Neon Archive', 'GH-C09-V2', 'Fire', 'Gen I', '#037', 20],
+  ['Togepi', 'Soft Miracle', 'CORE', 'Neon Archive', 'GH-C10-V2', 'Fairy', 'Gen II', '#175', 21],
+
+  ['Gengar', 'Shadow Deal', 'PRIME', 'Nocturne', 'GH-P01-V3', 'Ghost / Poison', 'Gen I', '#094', 75],
+  ['Lucario', 'Blue Discipline', 'PRIME', 'Velocity', 'GH-P02-V2', 'Fighting / Steel', 'Gen IV', '#448', 58],
+  ['Greninja', 'Moonlit Shuriken', 'PRIME', 'Prestige', 'GH-P03-V1', 'Water / Dark', 'Gen VI', '#658', 44],
+  ['Gardevoir', 'Starlight Vow', 'PRIME', 'Velocity', 'GH-P04-V2', 'Psychic / Fairy', 'Gen III', '#282', 64],
+  ['Dragonite', 'Golden Sky', 'PRIME', 'Prestige', 'GH-P05-V1', 'Dragon / Flying', 'Gen I', '#149', 50],
+  ['Arcanine', 'Noble Charge', 'PRIME', 'Nocturne', 'GH-P06-V3', 'Fire', 'Gen I', '#059', 90],
+  ['Lapras', 'Glacial Song', 'PRIME', 'Nocturne', 'GH-P07-V3', 'Water / Ice', 'Gen I', '#131', 93],
+  ['Scizor', 'Crimson Edge', 'PRIME', 'Prestige', 'GH-P09-V1', 'Bug / Steel', 'Gen II', '#212', 62],
+  ['Luxray', 'Night Voltage', 'PRIME', 'Nocturne', 'GH-P10-V3', 'Electric', 'Gen IV', '#405', 102],
+  ['Absol', "Fate's Edge", 'PRIME', 'Nocturne', 'GH-P12-V3', 'Dark', 'Gen III', '#359', 108],
+
+  ['Charizard', 'Inferno Sovereign', 'GRAIL', 'Apex', 'GH-G01-V1', 'Fire / Flying', 'Gen I', '#006', 145],
+  ['Umbreon', 'Black Moon Covenant', 'GRAIL', 'Eternal', 'GH-G02-V2', 'Dark', 'Gen II', '#197', 185],
+  ['Rayquaza', 'Emerald Ascension', 'GRAIL', 'Eternal', 'GH-G03-V2', 'Dragon / Flying', 'Gen III', '#384', 190],
+  ['Lugia', 'Silent Tempest', 'GRAIL', 'Apex', 'GH-G04-V1', 'Psychic / Flying', 'Gen II', '#249', 160],
+  ['Mewtwo', 'Answerable to None', 'GRAIL', 'Eternal', 'GH-G06-V2', 'Psychic', 'Gen I', '#150', 205],
+  ['Garchomp', 'Earthsplitter', 'GRAIL', 'Eternal', 'GH-G07-V2', 'Dragon / Ground', 'Gen IV', '#445', 210],
+  ['Gyarados', 'The Sea Remembers', 'GRAIL', 'Eternal', 'GH-G11-V2', 'Water / Flying', 'Gen I', '#130', 230],
+  ['Giratina', 'Void Monarch', 'GRAIL', 'Apex', 'GH-G13-V1', 'Ghost / Dragon', 'Gen IV', '#487', 205],
+];
+
+// type → hue + chroma + particle behaviour
+const TYPES = {
+  Fire: [42, 0.16, 'rise'], Grass: [148, 0.14, 'rise'], Fairy: [352, 0.13, 'rise'], Flying: [255, 0.09, 'rise'],
+  Water: [248, 0.14, 'fall'], Ice: [218, 0.11, 'fall'],
+  Electric: [96, 0.16, 'burst'], Fighting: [28, 0.15, 'burst'], Rock: [66, 0.09, 'burst'],
+  Ground: [72, 0.11, 'burst'], Steel: [240, 0.05, 'burst'], Bug: [132, 0.13, 'burst'], Dragon: [278, 0.15, 'burst'],
+  Psychic: [332, 0.15, 'drift'], Ghost: [304, 0.13, 'drift'], Dark: [292, 0.07, 'drift'],
+  Poison: [316, 0.14, 'drift'], Normal: [268, 0.04, 'drift'],
+};
+const typeOf = (s) => TYPES[s.split(' / ')[0]] || TYPES.Normal;
+
+// per-element card behaviour: body = whole-card motion, e1/e2 = art layers, ink = art label tone
+const ELEM = {
+  Fire: (h, c) => ({
+    body: 'animation:gh-heat 3.1s ease-in-out infinite',
+    e1: 'background:radial-gradient(115% 66% at 50% 112%,oklch(0.9 0.19 68 / .95),oklch(0.66 0.2 38 / .55) 42%,rgba(0,0,0,0) 76%);animation:gh-heat 1.5s ease-in-out infinite',
+    e2: 'background:radial-gradient(46% 34% at 30% 96%,oklch(0.96 0.15 84 / .85),rgba(0,0,0,0) 68%),radial-gradient(40% 30% at 68% 100%,oklch(0.92 0.18 46 / .8),rgba(0,0,0,0) 68%),radial-gradient(30% 24% at 52% 88%,oklch(0.98 0.1 96 / .6),rgba(0,0,0,0) 70%);mix-blend-mode:screen;animation:gh-flick 1.15s ease-in-out infinite',
+  }),
+  Water: (h, c) => ({
+    body: 'animation:gh-bob 4.6s ease-in-out infinite',
+    e1: 'left:-50%;width:200%;background:repeating-linear-gradient(74deg,oklch(0.78 0.13 236 / .34) 0 3px,rgba(0,0,0,0) 3px 16px),radial-gradient(90% 60% at 50% 108%,oklch(0.66 0.15 244 / .8),rgba(0,0,0,0) 72%);animation:gh-wave 7s linear infinite',
+    e2: 'background:linear-gradient(180deg,rgba(0,0,0,0) 30%,oklch(0.84 0.11 228 / .5) 72%,oklch(0.94 0.07 224 / .75));mix-blend-mode:screen;animation:gh-swell 3.4s ease-in-out infinite',
+  }),
+  Grass: (h, c) => ({
+    body: 'animation:gh-sway 5.4s ease-in-out infinite',
+    e1: 'background:repeating-linear-gradient(96deg,oklch(0.72 0.16 146 / .4) 0 2px,rgba(0,0,0,0) 2px 11px),radial-gradient(80% 54% at 50% 112%,oklch(0.6 0.16 142 / .85),rgba(0,0,0,0) 74%);transform-origin:50% 100%;animation:gh-grow 2.4s cubic-bezier(.2,.7,.2,1) both,gh-sway 6.2s ease-in-out 2.4s infinite',
+    e2: 'background:radial-gradient(22% 12% at 30% 24%,oklch(0.86 0.16 138 / .9),rgba(0,0,0,0) 70%),radial-gradient(18% 10% at 68% 46%,oklch(0.8 0.15 158 / .8),rgba(0,0,0,0) 72%);animation:gh-leaf 5.2s linear infinite',
+  }),
+  Electric: (h, c) => ({
+    body: 'animation:gh-shear 4.4s ease-in-out infinite',
+    e1: 'background:linear-gradient(102deg,rgba(0,0,0,0) 44%,oklch(0.96 0.16 98 / .85) 49%,rgba(0,0,0,0) 53%),linear-gradient(72deg,rgba(0,0,0,0) 62%,oklch(0.92 0.15 104 / .6) 66%,rgba(0,0,0,0) 69%);animation:gh-breathe 3.2s ease-in-out infinite',
+    e2: 'background:radial-gradient(60% 40% at 50% 50%,oklch(0.9 0.14 100 / .32),rgba(0,0,0,0) 74%);mix-blend-mode:screen;animation:gh-flick 3s ease-in-out infinite',
+  }),
+  Ice: (h, c) => ({
+    body: 'animation:gh-bob 7.4s ease-in-out infinite',
+    e1: 'background:repeating-linear-gradient(126deg,oklch(0.9 0.07 216 / .3) 0 1px,rgba(0,0,0,0) 1px 14px),radial-gradient(90% 70% at 50% -10%,oklch(0.86 0.09 214 / .6),rgba(0,0,0,0) 72%)',
+    e2: 'background:linear-gradient(200deg,oklch(0.96 0.05 210 / .5),rgba(0,0,0,0) 42%);mix-blend-mode:screen;animation:gh-drip 6s ease-in infinite',
+  }),
+  Psychic: (h, c) => ({
+    body: 'animation:gh-bob 6.4s ease-in-out infinite',
+    e1: 'inset:14%;background:conic-gradient(from 0deg,oklch(0.8 0.16 332 / .8),oklch(0.6 0.14 300 / .25),oklch(0.82 0.15 350 / .8));filter:blur(7px);animation:gh-warp 6.2s ease-in-out infinite',
+    e2: 'background:radial-gradient(60% 44% at 50% 54%,oklch(0.92 0.12 336 / .3),rgba(0,0,0,0) 72%);mix-blend-mode:screen;animation:gh-flick 3.4s ease-in-out infinite',
+  }),
+  Ghost: (h, c) => ({
+    body: 'animation:gh-bob 6.8s ease-in-out infinite',
+    e1: 'inset:16%;background:radial-gradient(50% 50% at 50% 50%,oklch(0.78 0.14 304 / .85),rgba(0,0,0,0) 72%);filter:blur(9px);animation:gh-warp 7.4s ease-in-out infinite',
+    e2: 'background:linear-gradient(180deg,rgba(0,0,0,0) 40%,oklch(0.5 0.1 300 / .6));animation:gh-flick 4.2s ease-in-out infinite',
+  }),
+  Dragon: (h, c) => ({
+    body: 'animation:gh-heat 4.4s ease-in-out infinite',
+    e1: 'background:conic-gradient(from 210deg at 50% 120%,oklch(0.74 0.17 282 / .85),rgba(0,0,0,0) 46%,oklch(0.7 0.16 306 / .7));animation:gh-swell 4.2s ease-in-out infinite',
+    e2: 'background:repeating-linear-gradient(140deg,oklch(0.9 0.12 288 / .22) 0 2px,rgba(0,0,0,0) 2px 15px);mix-blend-mode:screen',
+  }),
+  Steel: (h, c) => ({
+    body: '',
+    e1: 'background:linear-gradient(118deg,rgba(255,255,255,.05) 20%,oklch(0.9 0.03 240 / .55) 48%,rgba(255,255,255,.05) 70%);animation:gh-shear 5.6s ease-in-out infinite',
+    e2: 'background:repeating-linear-gradient(90deg,rgba(255,255,255,.09) 0 1px,rgba(0,0,0,0) 1px 9px)',
+  }),
+};
+const elemOf = (type, hue, chroma) => {
+  const key = type.split(' / ')[0];
+  const f = ELEM[key];
+  if (f) return f(hue, chroma);
+  return {
+    body: '',
+    e1: `background:radial-gradient(85% 60% at 50% 108%,oklch(0.7 ${(chroma + 0.03).toFixed(3)} ${hue} / .75),rgba(0,0,0,0) 74%);animation:gh-swell 5.2s ease-in-out infinite`,
+    e2: `background:repeating-linear-gradient(112deg,oklch(0.9 ${chroma.toFixed(3)} ${hue} / .16) 0 2px,rgba(0,0,0,0) 2px 13px);mix-blend-mode:screen`,
+  };
+};
+
+// per-element atmosphere behind the card — grows with the hold, so the room turns before the card does
+const ATMOS = {
+  Fire: () => ({
+    a1: 'background:radial-gradient(80% 52% at 50% 112%,oklch(0.72 0.2 46 / .85),oklch(0.45 0.16 32 / .3) 46%,rgba(0,0,0,0) 76%);animation:gh-heat 2.6s ease-in-out infinite',
+    a2: 'background:radial-gradient(38% 26% at 26% 96%,oklch(0.86 0.18 62 / .5),rgba(0,0,0,0) 70%),radial-gradient(34% 22% at 74% 100%,oklch(0.8 0.19 38 / .45),rgba(0,0,0,0) 70%);animation:gh-flick 1.4s ease-in-out infinite',
+  }),
+  Water: () => ({
+    a1: 'top:-40%;height:180%;background:repeating-linear-gradient(0deg,oklch(0.62 0.13 240 / .3) 0 2px,rgba(0,0,0,0) 2px 22px);animation:gh-panY 9s linear infinite',
+    a2: 'background:radial-gradient(70% 46% at 50% 108%,oklch(0.5 0.15 246 / .85),rgba(0,0,0,0) 74%),radial-gradient(50% 34% at 50% 0%,oklch(0.66 0.11 228 / .4),rgba(0,0,0,0) 72%);animation:gh-swell 5.2s ease-in-out infinite',
+  }),
+  Grass: () => ({
+    a1: 'left:-20%;width:140%;background:repeating-linear-gradient(92deg,oklch(0.6 0.15 146 / .3) 0 3px,rgba(0,0,0,0) 3px 26px);transform-origin:50% 100%;animation:gh-sway 8s ease-in-out infinite',
+    a2: 'background:radial-gradient(60% 40% at 50% 106%,oklch(0.52 0.16 142 / .8),rgba(0,0,0,0) 72%);animation:gh-breathe 6.8s ease-in-out infinite',
+  }),
+  Electric: () => ({
+    a1: 'background:linear-gradient(96deg,rgba(0,0,0,0) 46%,oklch(0.92 0.16 100 / .5) 50%,rgba(0,0,0,0) 54%),linear-gradient(80deg,rgba(0,0,0,0) 30%,oklch(0.86 0.15 104 / .3) 33%,rgba(0,0,0,0) 36%);animation:gh-breathe 3.6s ease-in-out infinite',
+    a2: 'background:radial-gradient(56% 40% at 50% 48%,oklch(0.8 0.15 100 / .4),rgba(0,0,0,0) 72%);animation:gh-flick 3.4s ease-in-out infinite',
+  }),
+  Ice: () => ({
+    a1: 'background:repeating-linear-gradient(122deg,oklch(0.86 0.07 214 / .22) 0 1px,rgba(0,0,0,0) 1px 26px);animation:gh-pan 22s linear infinite',
+    a2: 'background:radial-gradient(64% 42% at 50% -8%,oklch(0.78 0.09 214 / .6),rgba(0,0,0,0) 74%);animation:gh-breathe 6.4s ease-in-out infinite',
+  }),
+  Psychic: () => ({
+    a1: 'background:conic-gradient(from 0deg at 50% 46%,oklch(0.6 0.16 332 / .55),rgba(0,0,0,0) 26%,oklch(0.56 0.15 300 / .5) 52%,rgba(0,0,0,0) 78%,oklch(0.62 0.15 350 / .55));animation:gh-turn 26s linear infinite',
+    a2: 'background:radial-gradient(46% 32% at 50% 46%,oklch(0.7 0.14 336 / .5),rgba(0,0,0,0) 72%);animation:gh-breathe 4.6s ease-in-out infinite',
+  }),
+  Ghost: () => ({
+    a1: 'inset:-20%;background:radial-gradient(34% 26% at 34% 40%,oklch(0.58 0.14 304 / .7),rgba(0,0,0,0) 70%),radial-gradient(30% 22% at 70% 62%,oklch(0.5 0.13 292 / .6),rgba(0,0,0,0) 70%);animation:gh-warp 12s ease-in-out infinite',
+    a2: 'background:linear-gradient(180deg,rgba(0,0,0,0) 44%,oklch(0.3 0.1 300 / .7));animation:gh-flick 5.2s ease-in-out infinite',
+  }),
+  Dragon: () => ({
+    a1: 'background:conic-gradient(from 200deg at 50% 118%,oklch(0.6 0.17 282 / .7),rgba(0,0,0,0) 44%,oklch(0.56 0.16 306 / .6));animation:gh-swell 6.4s ease-in-out infinite',
+    a2: 'background:repeating-linear-gradient(144deg,oklch(0.74 0.13 288 / .18) 0 2px,rgba(0,0,0,0) 2px 30px);animation:gh-pan 26s linear infinite',
+  }),
+  Steel: () => ({
+    a1: 'background:linear-gradient(112deg,rgba(0,0,0,0) 26%,oklch(0.78 0.03 240 / .4) 50%,rgba(0,0,0,0) 74%);animation:gh-shear 9s ease-in-out infinite',
+    a2: 'background:repeating-linear-gradient(90deg,rgba(255,255,255,.06) 0 1px,rgba(0,0,0,0) 1px 24px);animation:gh-pan 30s linear infinite',
+  }),
+};
+const atmosOf = (type, hue, chroma) => {
+  const f = ATMOS[type.split(' / ')[0]];
+  if (f) return f();
+  return {
+    a1: `background:radial-gradient(58% 40% at 50% 104%,oklch(0.56 ${(chroma + 0.04).toFixed(3)} ${hue} / .75),rgba(0,0,0,0) 74%);animation:gh-swell 7s ease-in-out infinite`,
+    a2: `background:radial-gradient(44% 30% at 50% 44%,oklch(0.66 ${chroma.toFixed(3)} ${hue} / .45),rgba(0,0,0,0) 72%);animation:gh-breathe 7.4s ease-in-out infinite`,
+  };
+};
+
+// the card sitting IN its element: back = what seeps through the sealed back, f1/f2 = layers in FRONT of the card
+const ENV = {
+  Fire: () => ({
+    back: 'background:radial-gradient(92% 52% at 50% 114%,oklch(0.72 0.2 46 / .85),oklch(0.5 0.16 34 / .3) 44%,rgba(0,0,0,0) 76%);animation:gh-flick 1.3s ease-in-out infinite',
+    f1: 'left:-11%;right:-11%;bottom:-20%;height:32%;background:radial-gradient(24% 58% at 18% 100%,oklch(0.9 0.19 62 / .9),rgba(0,0,0,0) 70%),radial-gradient(21% 76% at 44% 100%,oklch(0.96 0.16 80 / .85),rgba(0,0,0,0) 72%),radial-gradient(23% 56% at 71% 100%,oklch(0.86 0.2 40 / .9),rgba(0,0,0,0) 70%),radial-gradient(17% 42% at 91% 100%,oklch(0.9 0.18 56 / .75),rgba(0,0,0,0) 72%);mix-blend-mode:screen;transform-origin:50% 100%;animation:gh-flick .95s ease-in-out infinite,gh-heat 1.7s ease-in-out infinite',
+    f2: 'left:-9%;right:-9%;bottom:-18%;height:34%;background:radial-gradient(2px 2px at 22% 82%,oklch(0.97 0.14 76 / .95),rgba(0,0,0,0) 60%),radial-gradient(2px 2px at 57% 90%,oklch(0.94 0.16 58 / .9),rgba(0,0,0,0) 60%),radial-gradient(1.5px 1.5px at 78% 86%,oklch(0.98 0.12 84 / .9),rgba(0,0,0,0) 60%),radial-gradient(1.5px 1.5px at 38% 94%,oklch(0.95 0.15 66 / .85),rgba(0,0,0,0) 60%);mix-blend-mode:screen;animation:gh-emb 2.8s linear infinite',
+  }),
+  Water: () => ({
+    back: 'background:repeating-linear-gradient(0deg,oklch(0.7 0.12 238 / .26) 0 1px,rgba(0,0,0,0) 1px 12px),radial-gradient(90% 56% at 50% 110%,oklch(0.5 0.15 246 / .8),rgba(0,0,0,0) 74%);animation:gh-panY 6s linear infinite',
+    f1: 'left:-9%;right:-9%;bottom:-21%;height:25%;background:linear-gradient(180deg,oklch(0.92 0.08 224 / .8) 0 2px,oklch(0.56 0.14 244 / .26) 2px);animation:gh-swell 3.6s ease-in-out infinite',
+    f2: 'left:-13%;right:-13%;bottom:-22%;height:30%;-webkit-mask-image:linear-gradient(0deg,#000 0 46%,rgba(0,0,0,0) 100%);mask-image:linear-gradient(0deg,#000 0 46%,rgba(0,0,0,0) 100%);background:repeating-linear-gradient(0deg,oklch(0.92 0.07 224 / .24) 0 1px,rgba(0,0,0,0) 1px 9px),linear-gradient(90deg,rgba(0,0,0,0),oklch(0.95 0.05 220 / .3) 50%,rgba(0,0,0,0));mix-blend-mode:screen;animation:gh-panY 4.6s linear infinite,gh-glint 5.2s ease-in-out infinite',
+  }),
+  Grass: () => ({
+    back: 'background:repeating-linear-gradient(93deg,oklch(0.6 0.15 146 / .3) 0 2px,rgba(0,0,0,0) 2px 14px),radial-gradient(85% 52% at 50% 112%,oklch(0.5 0.16 142 / .85),rgba(0,0,0,0) 74%);animation:gh-sway 6.4s ease-in-out infinite',
+    f1: 'left:-13%;right:-13%;bottom:-21%;height:30%;background:repeating-linear-gradient(91deg,oklch(0.6 0.16 145 / .95) 0 3px,rgba(0,0,0,0) 3px 10px);-webkit-mask-image:linear-gradient(0deg,#000 0 40%,rgba(0,0,0,0) 92%);mask-image:linear-gradient(0deg,#000 0 40%,rgba(0,0,0,0) 92%);transform-origin:50% 100%;animation:gh-sway 4.6s ease-in-out infinite',
+    f2: 'left:-16%;right:-16%;bottom:-22%;height:36%;background:repeating-linear-gradient(88deg,oklch(0.78 0.15 138 / .8) 0 2px,rgba(0,0,0,0) 2px 17px);-webkit-mask-image:linear-gradient(0deg,#000 0 24%,rgba(0,0,0,0) 82%);mask-image:linear-gradient(0deg,#000 0 24%,rgba(0,0,0,0) 82%);transform-origin:50% 100%;animation:gh-sway 7.2s ease-in-out infinite reverse',
+  }),
+  Electric: () => ({
+    back: 'background:linear-gradient(98deg,rgba(0,0,0,0) 45%,oklch(0.94 0.16 100 / .7) 50%,rgba(0,0,0,0) 55%);animation:gh-breathe 3.2s ease-in-out infinite',
+    f1: 'inset:-9%;border-radius:22px;border:1px solid oklch(0.95 0.15 100 / .8);box-shadow:0 0 22px oklch(0.9 0.16 100 / .6),inset 0 0 18px oklch(0.9 0.16 100 / .4);animation:gh-breathe 2.8s ease-in-out infinite',
+    f2: 'inset:-9%;-webkit-mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);background:linear-gradient(104deg,rgba(0,0,0,0) 47%,oklch(0.98 0.13 102 / .9) 49.5%,rgba(0,0,0,0) 52%),linear-gradient(72deg,rgba(0,0,0,0) 62%,oklch(0.94 0.15 98 / .7) 64%,rgba(0,0,0,0) 67%);mix-blend-mode:screen;animation:gh-flick 2.6s ease-in-out infinite',
+  }),
+  Ice: () => ({
+    back: 'background:repeating-linear-gradient(124deg,oklch(0.88 0.07 214 / .26) 0 1px,rgba(0,0,0,0) 1px 15px),radial-gradient(80% 60% at 50% -10%,oklch(0.8 0.09 214 / .5),rgba(0,0,0,0) 74%)',
+    f1: 'left:-11%;right:-11%;bottom:-21%;height:28%;background:linear-gradient(0deg,oklch(0.92 0.06 212 / .55),rgba(0,0,0,0) 88%),repeating-linear-gradient(118deg,oklch(0.98 0.03 210 / .32) 0 1px,rgba(0,0,0,0) 1px 12px);animation:gh-breathe 6s ease-in-out infinite',
+    f2: 'inset:-10%;background:radial-gradient(1.5px 1.5px at 26% 30%,#fff,rgba(0,0,0,0) 60%),radial-gradient(1.5px 1.5px at 72% 62%,#fff,rgba(0,0,0,0) 60%),radial-gradient(1.5px 1.5px at 48% 18%,#fff,rgba(0,0,0,0) 60%);mix-blend-mode:screen;animation:gh-drip 7s linear infinite',
+  }),
+  Psychic: () => ({
+    back: 'background:conic-gradient(from 0deg at 50% 50%,oklch(0.62 0.16 332 / .6),rgba(0,0,0,0) 30%,oklch(0.58 0.15 300 / .55) 60%,rgba(0,0,0,0));animation:gh-turn 18s linear infinite',
+    f1: 'inset:-13%;border-radius:50%;background:radial-gradient(50% 50% at 50% 50%,rgba(0,0,0,0) 66%,oklch(0.8 0.12 336 / .3) 80%,rgba(0,0,0,0) 92%);animation:gh-warp 9s ease-in-out infinite',
+    f2: 'inset:-11%;border-radius:50%;background:radial-gradient(50% 50% at 50% 50%,rgba(0,0,0,0) 70%,oklch(0.9 0.12 336 / .3) 84%,rgba(0,0,0,0) 96%);mix-blend-mode:screen;animation:gh-breathe 4.4s ease-in-out infinite',
+  }),
+  Ghost: () => ({
+    back: 'background:radial-gradient(60% 44% at 50% 56%,oklch(0.56 0.14 304 / .7),rgba(0,0,0,0) 72%);animation:gh-warp 9s ease-in-out infinite',
+    f1: 'left:-14%;right:-14%;bottom:-22%;height:34%;background:linear-gradient(0deg,oklch(0.42 0.12 300 / .7),rgba(0,0,0,0) 86%);filter:blur(6px);animation:gh-swell 5.4s ease-in-out infinite',
+    f2: 'inset:-11%;-webkit-mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);background:radial-gradient(40% 30% at 30% 40%,oklch(0.7 0.13 304 / .34),rgba(0,0,0,0) 70%);mix-blend-mode:screen;animation:gh-flick 4.6s ease-in-out infinite',
+  }),
+  Dragon: () => ({
+    back: 'background:conic-gradient(from 200deg at 50% 116%,oklch(0.6 0.17 282 / .8),rgba(0,0,0,0) 44%,oklch(0.56 0.16 306 / .7));animation:gh-swell 5.4s ease-in-out infinite',
+    f1: 'inset:-10%;border-radius:20px;box-shadow:inset 0 0 26px oklch(0.7 0.16 286 / .5),0 0 30px oklch(0.6 0.17 292 / .45);animation:gh-breathe 5.6s ease-in-out infinite',
+    f2: 'inset:-10%;-webkit-mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);background:repeating-linear-gradient(140deg,oklch(0.86 0.13 288 / .24) 0 2px,rgba(0,0,0,0) 2px 16px);mix-blend-mode:screen;animation:gh-pan 18s linear infinite',
+  }),
+  Steel: () => ({
+    back: 'background:linear-gradient(116deg,rgba(255,255,255,.05) 24%,oklch(0.86 0.03 240 / .5) 50%,rgba(255,255,255,.05) 76%);animation:gh-shear 7s ease-in-out infinite',
+    f1: 'inset:-7%;border-radius:20px;border:1px solid oklch(0.9 0.03 240 / .5);box-shadow:0 0 18px oklch(0.8 0.03 240 / .35)',
+    f2: 'inset:-9%;-webkit-mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);background:linear-gradient(112deg,rgba(0,0,0,0) 40%,rgba(255,255,255,.45) 50%,rgba(0,0,0,0) 60%);mix-blend-mode:screen;animation:gh-glint 4.6s ease-in-out infinite',
+  }),
+};
+const envOf = (type, hue, chroma) => {
+  const f = ENV[type.split(' / ')[0]];
+  if (f) return f();
+  return {
+    back: `background:radial-gradient(88% 54% at 50% 112%,oklch(0.56 ${(chroma + 0.03).toFixed(3)} ${hue} / .8),rgba(0,0,0,0) 74%);animation:gh-swell 6s ease-in-out infinite`,
+    f1: `left:-12%;right:-12%;bottom:-18%;height:28%;background:linear-gradient(0deg,oklch(0.58 ${chroma.toFixed(3)} ${hue} / .6),rgba(0,0,0,0) 88%);filter:blur(4px);animation:gh-swell 4.6s ease-in-out infinite`,
+    f2: `inset:-10%;-webkit-mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);mask-image:radial-gradient(64% 50% at 50% 60%,rgba(0,0,0,0) 0 52%,#000 92%);background:radial-gradient(56% 40% at 50% 60%,oklch(0.86 ${chroma.toFixed(3)} ${hue} / .24),rgba(0,0,0,0) 72%);mix-blend-mode:screen;animation:gh-breathe 5.8s ease-in-out infinite`,
+  };
+};
+
+const TIER = {
+  CORE:  { res: [0.16, 0.32], motes: 0,  dim: 0,    beams: false, rings: 0, note: 'Faint. Common weight.' },
+  PRIME: { res: [0.58, 0.74], motes: 9,  dim: 0.55, beams: false, rings: 1, note: 'Something is answering.' },
+  GRAIL: { res: [0.93, 0.99], motes: 18, dim: 1,    beams: true,  rings: 2, note: 'It is loud under your thumb.' },
+};
+
+const money = (c) => '$' + (c / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const rng = (a, b) => a + Math.random() * (b - a);
+const pick = (l) => l[Math.floor(Math.random() * l.length)];
+
+function deal(grailChance) {
+  const by = (t) => ROWS.filter((r) => r[2] === t);
+  const core = by('CORE'), prime = by('PRIME'), grail = by('GRAIL');
+  const out = [];
+  const take = (pool) => { let r; do { r = pick(pool); } while (out.includes(r)); out.push(r); };
+  take(core); take(core); take(core);
+  take(Math.random() < 0.45 ? prime : core);
+  take(Math.random() < grailChance ? grail : prime);
+  for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
+  return out.map((r, i) => {
+    const [mon, title, tier, collection, num, type, gen, dex, dollars] = r;
+    const [hue, chroma, fx] = typeOf(type);
+    return {
+      id: num + i, mon, title, tier, collection, num, type, gen, dex,
+      cents: dollars * 100, hue, chroma, fx,
+      res: rng(TIER[tier].res[0], TIER[tier].res[1]), status: 'sealed',
+    };
+  });
+}
+
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { cards: deal(this.props.grailChance ?? 0.18), phase: 'fan', done: false, reviewing: false };
+    this.a = { charge: 0, res: 0, lift: 0, jitter: 0, tiltX: 0, tiltY: 0 };
+    this.holdId = null; this.openId = null; this.rev = 0;
+  }
+
+  componentDidMount() {
+    this.up = () => { this.holdId = null; };
+    this.move = (e) => {
+      if (!this.holdId) return;
+      this.a.tiltY = Math.max(-1, Math.min(1, (e.clientX / innerWidth - 0.5) * 2.2));
+      this.a.tiltX = Math.max(-1, Math.min(1, (e.clientY / innerHeight - 0.5) * 1.4));
+    };
+    addEventListener('pointerup', this.up);
+    addEventListener('pointercancel', this.up);
+    addEventListener('pointermove', this.move);
+    let prev = performance.now();
+    const loop = (now) => {
+      const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+      this.tick(dt, now);
+      this.raf = requestAnimationFrame(loop);
+    };
+    this.raf = requestAnimationFrame(loop);
+  }
+
+  componentWillUnmount() {
+    cancelAnimationFrame(this.raf);
+    removeEventListener('pointerup', this.up);
+    removeEventListener('pointercancel', this.up);
+    removeEventListener('pointermove', this.move);
+  }
+
+  tick(dt, now) {
+    const a = this.a;
+    const held = this.holdId && this.state.cards.find((c) => c.id === this.holdId);
+    const hold = (this.props.holdMs ?? 1500) / 1000;
+    const before = a.charge + a.res + a.lift;
+
+    if (held) {
+      const res = held.res;
+      let rate = 1 / hold;
+      if (a.charge > 0.6) rate *= 1 - 0.62 * res;                        // rare cards resist
+      if (res > 0.5 && a.charge > 0.78 && a.charge < 0.87) rate *= 0.2;  // the stall
+      a.charge = Math.min(1, a.charge + dt * rate);
+      a.lift += (1 - a.lift) * Math.min(1, dt * 7);
+      a.res += (res * (0.35 + 0.65 * a.charge) - a.res) * Math.min(1, dt * 4.5);
+      a.jitter = Math.sin(now / (66 - res * 42)) * res * (0.05 + 0.05 * a.charge) * a.charge;
+      if (a.charge >= 1) {
+        this.holdId = null; this.openId = held.id; this.rev++;
+        a.charge = 0; a.res = 0; a.lift = 1;
+        this.setState((s) => ({
+          phase: 'open',
+          cards: s.cards.map((c) => (c.id === held.id ? { ...c, status: 'open' } : c)),
+        }));
+        if (navigator.vibrate) navigator.vibrate(held.tier === 'GRAIL' ? [20, 50, 30, 50, 90] : held.tier === 'PRIME' ? [14, 40, 26] : 12);
+        return;
+      }
+      if (navigator.vibrate && Math.floor(a.charge * 12) !== this._t) { this._t = Math.floor(a.charge * 12); navigator.vibrate(4); }
+    } else {
+      a.charge = Math.max(0, a.charge - dt * 2.6);
+      a.res = Math.max(0, a.res - dt * 1.8);
+      a.jitter *= Math.pow(0.02, dt);
+      if (this.state.phase !== 'open') a.lift = Math.max(0, a.lift - dt * 5);
+    }
+    if (before > 0.0005 || a.charge + a.res + a.lift > 0.0005) this.forceUpdate();
+  }
+
+  grab(id) {
+    if (this.state.phase !== 'fan' || this.state.done) return;
+    this.holdId = id; this.a.charge = 0;
+    if (navigator.vibrate) navigator.vibrate(8);
+  }
+
+  dock() {
+    if (this.state.phase !== 'open') return;
+    const id = this.openId;
+    this.openId = null; this.a.lift = 0;
+    this.setState((s) => {
+      const cards = s.cards.map((c) => (c.id === id ? { ...c, status: 'pulled' } : c));
+      return { cards, phase: 'fan', done: cards.every((c) => c.status === 'pulled') };
+    });
+  }
+
+  renderVals() {
+    const { cards, phase, done, reviewing } = this.state;
+    const a = this.a;
+    const heldCard = this.holdId ? cards.find((c) => c.id === this.holdId) : null;
+    const openCard = cards.find((c) => c.status === 'open');
+    const focus = heldCard || openCard;
+    const sealed = cards.filter((c) => c.status === 'sealed');
+    const showTell = this.props.showTell ?? true;
+    const heat = a.res;
+    const hue = focus ? focus.hue : 272;
+    const tellHue = 268 + Math.max(0, heat - 0.55) * 200;
+    const sfx = this.rev % 2 ? 'A' : 'B';
+    const tier = openCard ? TIER[openCard.tier] : null;
+    const oh = openCard ? openCard.hue : 272;
+    const oc = openCard ? openCard.chroma : 0.12;
+    const resisting = heldCard && heldCard.res > 0.5 && a.charge > 0.6;
+    const atmos = focus ? atmosOf(focus.type, focus.hue, focus.chroma) : null;
+    const atmosStr = focus ? (openCard ? 1 : Math.min(1, 0.2 + a.charge * 0.95)) : 0;
+
+    const slots = cards.map((c) => {
+      const j = sealed.indexOf(c);
+      const isHeld = this.holdId === c.id;
+      const isOpen = c.status === 'open';
+      const front = isHeld || isOpen;
+      const rare = c.tier !== 'CORE';
+
+      let tf, op = 1, zi = 40 - Math.max(0, j);
+      if (c.status === 'pulled') {
+        tf = 'translate(-50%,calc(-50% - 46px)) scale(.9)'; op = 0; zi = 1;
+      } else if (front) {
+        const l = isOpen ? 1 : a.lift;
+        const sc = (isOpen ? (c.tier === 'GRAIL' ? 1.06 : c.tier === 'PRIME' ? 1.04 : 1.02) : 1.01 + 0.06 * a.charge * l) + (isHeld ? a.jitter : 0);
+        tf = `translate(-50%,calc(-50% + ${(-8 * l).toFixed(2)}%)) rotateX(${(a.tiltX * -5 * l).toFixed(2)}deg) rotateY(${(a.tiltY * 7 * l).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+        zi = 60;
+      } else {
+        tf = `translate(-50%,calc(-50% - ${(j * 9).toFixed(0)}px)) scale(${(1 - j * 0.032).toFixed(3)})`;
+        op = j > 3 ? 0.35 : 1;
+      }
+
+      const el = elemOf(c.type, c.hue, c.chroma);
+      const env = envOf(c.type, c.hue, c.chroma);
+      const envStr = isOpen ? 1 : isHeld ? Math.min(1, Math.max(0, a.charge * 1.15 - 0.08)) : 0;
+      return {
+        id: c.id, mon: c.mon, title: c.title, type: c.type, tier: c.tier, typeShort: c.type.split(' / ')[0].toUpperCase(), num: c.num, dex: c.dex, gen: c.gen,
+        collection: c.collection, value: money(c.cents),
+        wrap: `position:absolute;left:50%;top:50%;height:min(460px,94%);aspect-ratio:5/7;transform-style:preserve-3d;perspective:900px;cursor:${c.status === 'sealed' && j === 0 && phase === 'fan' ? 'pointer' : 'default'};z-index:${zi};opacity:${op};transform:${tf};transition:transform ${front ? '.42s' : '.62s'} cubic-bezier(.16,.7,.2,1),opacity .5s;will-change:transform`,
+        glow: `position:absolute;inset:-16%;border-radius:50%;pointer-events:none;opacity:${(isHeld ? heat * 0.85 : isOpen ? 0.62 : 0).toFixed(3)};background:radial-gradient(50% 50% at 50% 50%,oklch(0.72 ${c.chroma + 0.04} ${c.hue} / .58),oklch(0.6 0.12 ${c.hue} / 0) 70%);filter:blur(14px);transition:opacity .3s`,
+        flip: `position:absolute;inset:0;transform-style:preserve-3d;transform:rotateY(${isOpen ? 180 : 0}deg);transition:transform .78s cubic-bezier(.7,0,.2,1)`,
+        backHide: `position:absolute;inset:0;transform-style:preserve-3d;opacity:${isOpen ? 0 : 1};transition:opacity .05s linear .34s`,
+        faceHide: `position:absolute;inset:0;transform-style:preserve-3d;transform:rotateY(180deg);opacity:${isOpen ? 1 : 0};transition:opacity .05s linear .34s`,
+        faceBody: `position:absolute;inset:0;border-radius:20px;overflow:hidden;container-type:inline-size;background:#0b0714;border:1px solid rgba(255,255,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.26),inset 0 0 0 1px oklch(0.82 ${c.chroma} ${c.hue} / .16),inset 0 -60px 90px oklch(0.42 ${c.chroma} ${c.hue} / .3),0 44px 96px rgba(0,0,0,.66),0 6px 18px rgba(0,0,0,.5);${isOpen ? el.body : ''}`,
+        edgeWord: `position:absolute;left:0;top:0;bottom:0;width:10cqw;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);font:500 clamp(8px,2.5cqw,11px)/1 'JetBrains Mono',monospace;letter-spacing:.42em;color:oklch(0.92 ${Math.min(0.1, c.chroma)} ${c.hue} / .82);background:linear-gradient(0deg,oklch(0.4 ${c.chroma} ${c.hue} / .5),oklch(0.28 ${c.chroma} ${c.hue} / .2));border-right:1px solid oklch(0.7 ${c.chroma} ${c.hue} / .3)`,
+        elem1: `position:absolute;inset:0;pointer-events:none;${isOpen ? el.e1 : 'opacity:0'}`,
+        elem2: `position:absolute;inset:0;pointer-events:none;${isOpen ? el.e2 : 'opacity:0'}`,
+        monBig: `position:absolute;left:4cqw;right:4cqw;bottom:3.4cqw;font:200 clamp(12px,4.6cqw,20px)/1.1 Sora,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.75);overflow:hidden;text-wrap:balance`,
+        rule: `height:1px;margin:3.4cqw 0 3cqw;background:linear-gradient(90deg,rgba(255,255,255,.5),oklch(0.85 ${c.chroma} ${c.hue} / .5) 30%,rgba(255,255,255,0))`,
+        backBody: `position:absolute;inset:0;background-color:#120c20;background-image:linear-gradient(152deg,rgba(255,255,255,.13),rgba(255,255,255,.015) 44%,rgba(126,96,226,.2));box-shadow:inset 0 1px 0 rgba(255,255,255,.26),inset 0 -50px 90px rgba(70,45,150,.28),0 44px 96px rgba(0,0,0,.62),0 6px 18px rgba(0,0,0,.5);border-radius:20px;overflow:hidden;border:1px solid oklch(0.8 ${c.chroma} ${c.hue} / ${(0.16 + envStr * 0.4).toFixed(3)});${isHeld && envStr > 0.5 ? el.body : ''}`,
+        backElem: `position:absolute;inset:0;pointer-events:none;opacity:${(envStr * 0.6).toFixed(3)};transition:opacity .3s;${envStr > 0.02 ? env.back : ''}`,
+        backSeal: `position:absolute;left:0;right:0;bottom:14px;text-align:center;font:400 8px/1 'JetBrains Mono',monospace;letter-spacing:.28em;color:${envStr > 0.62 ? `oklch(0.94 ${Math.min(0.12, c.chroma)} ${c.hue})` : 'rgba(255,255,255,.6)'};transition:color .2s`,
+        backLabel: envStr > 0.62 ? c.type.split(' / ')[0].toUpperCase() : 'SEALED',
+        envBack: `position:absolute;inset:-16%;pointer-events:none;transform:translateZ(-1px);opacity:${(envStr * 0.4).toFixed(3)};filter:blur(16px);transition:opacity .4s;${envStr > 0.02 ? env.back : ''}`,
+        envFront: `position:absolute;pointer-events:none;transform:translateZ(1px);opacity:${(envStr * 0.72).toFixed(3)};transition:opacity .4s;${envStr > 0.02 ? env.f1 : 'inset:0'}`,
+        envFront2: `position:absolute;pointer-events:none;transform:translateZ(2px);opacity:${(envStr * 0.62).toFixed(3)};transition:opacity .4s;${envStr > 0.02 ? env.f2 : 'inset:0'}`,
+        sheen: `position:absolute;top:-30%;bottom:-30%;width:26%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.22),rgba(255,255,255,0));pointer-events:none;opacity:${isHeld ? (0.5 + heat * 0.5).toFixed(2) : 0.28};animation:gh-sheen ${isHeld ? (2.4 - heat * 1.5).toFixed(2) : 7}s linear infinite`,
+        tint: `position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 95% at 50% 0%,oklch(0.34 ${c.chroma * 0.9} ${c.hue}),#0f0a1c 78%)`,
+        typeChip: `padding:1.9cqw 3.2cqw;border-radius:999px;font:500 clamp(8px,2.7cqw,12px)/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:oklch(0.9 ${Math.min(0.12, c.chroma)} ${c.hue});border:1px solid oklch(0.7 ${c.chroma} ${c.hue} / .5);background:oklch(0.45 ${c.chroma} ${c.hue} / .3);white-space:nowrap`,
+        art: `position:relative;flex:1;min-height:0;border-radius:3.6cqw;overflow:hidden;background-image:repeating-linear-gradient(115deg,oklch(0.8 ${c.chroma} ${c.hue} / .12) 0 6px,rgba(255,255,255,0) 6px 13px);background-color:rgba(0,0,0,.3);display:flex;flex-direction:column;justify-content:space-between;padding:4cqw;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),inset 0 30px 60px rgba(0,0,0,.35)`,
+        monStyle: `font:500 8px/1 'JetBrains Mono',monospace;letter-spacing:.18em;text-transform:uppercase;color:oklch(0.86 ${Math.min(0.11, c.chroma)} ${c.hue});margin-bottom:4px`,
+        valTone: `color:${c.tier === 'GRAIL' ? '#f4dca6' : c.tier === 'PRIME' ? '#e2d0ff' : '#efeaf7'};font-weight:700;white-space:nowrap`,
+        rake: `position:absolute;top:-40%;bottom:-40%;left:0;width:34%;pointer-events:none;opacity:${isOpen ? 0.5 : 0};background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.14) 35%,rgba(255,255,255,.32) 50%,rgba(255,255,255,.14) 65%,rgba(255,255,255,0));mix-blend-mode:screen;animation:gh-sheen 6.5s cubic-bezier(.5,0,.5,1) infinite`,
+        grain: `position:absolute;inset:0;pointer-events:none;opacity:.4;mix-blend-mode:soft-light;background-image:radial-gradient(rgba(255,255,255,.16) 1px,rgba(0,0,0,0) 1px);background-size:3px 3px`,
+        vign: `position:absolute;inset:0;pointer-events:none;border-radius:20px;box-shadow:inset 0 0 60px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.08)`,
+        floor: `position:absolute;left:6%;right:6%;bottom:-9%;height:16%;pointer-events:none;transform:translateZ(-2px);border-radius:50%;opacity:${(isOpen || isHeld ? 0.85 : 0.35).toFixed(2)};background:radial-gradient(50% 50% at 50% 50%,rgba(0,0,0,.75),rgba(0,0,0,0) 72%);filter:blur(10px)`,
+        foil: `position:absolute;inset:0;pointer-events:none;opacity:${rare ? (c.tier === 'GRAIL' ? 0.4 : 0.24) : 0};background:linear-gradient(118deg,rgba(255,255,255,0) 34%,oklch(0.92 0.1 ${c.hue} / .5) 48%,rgba(255,255,255,0) 62%),linear-gradient(62deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.28) 52%,rgba(255,255,255,0) 64%);mix-blend-mode:screen`,
+        lockTrack: `position:absolute;left:14%;right:14%;bottom:-14px;height:2px;border-radius:2px;background:rgba(255,255,255,.12);opacity:${isHeld ? 1 : 0};transition:opacity .25s`,
+        lockFill: `height:100%;width:${(a.charge * 100).toFixed(1)}%;border-radius:2px;background:oklch(0.86 0.13 ${tellHue.toFixed(0)});box-shadow:0 0 10px oklch(0.8 0.16 ${tellHue.toFixed(0)} / .9)`,
+      };
+    });
+
+    const moteCount = tier ? tier.motes : 0;
+    const fx = openCard ? openCard.fx : 'rise';
+    const motes = Array.from({ length: moteCount }, (_, i) => {
+      const n = moteCount;
+      const base = fx === 'rise' ? rng(-26, 26)
+        : fx === 'fall' ? 180 + rng(-26, 26)
+        : (i / n) * 360;
+      const dur = fx === 'drift' ? 2.6 : fx === 'fall' ? 1.9 : 1.5;
+      const scale = fx === 'burst' ? rng(0.5, 1) : rng(0.55, 1.15);
+      const size = fx === 'burst' ? 3 : fx === 'drift' ? 6 : 4;
+      return {
+        arm: `position:absolute;left:0;top:0;transform:rotate(${base.toFixed(1)}deg) scale(${scale.toFixed(2)});transform-origin:0 0`,
+        dot: `position:absolute;left:${(-size / 2).toFixed(1)}px;top:${(-size / 2).toFixed(1)}px;width:${size}px;height:${size}px;border-radius:${fx === 'burst' ? '1px' : '50%'};background:oklch(0.9 ${Math.min(0.16, oc + 0.04)} ${oh});box-shadow:0 0 ${fx === 'drift' ? 14 : 9}px oklch(0.85 0.15 ${oh} / .9);opacity:0;animation:gh-fly${sfx} ${dur}s cubic-bezier(.3,.6,.3,1) ${(i * 0.055).toFixed(2)}s both`,
+      };
+    });
+
+    const totals = cards.filter((c) => c.status === 'pulled').reduce((s, c) => s + c.cents, 0);
+    const best = cards.reduce((b, c) => (c.cents > (b ? b.cents : 0) ? c : b), null);
+
+    return {
+      slots, motes, done, reviewing,
+      headStyle: `position:absolute;left:0;right:0;top:0;z-index:80;padding:24px 22px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;pointer-events:none`,
+      headLeft: `transition:opacity .45s,transform .45s;opacity:${openCard ? 0 : 1};transform:translateY(${openCard ? -10 : 0}px)`,
+      atmos1: `position:absolute;inset:-12%;pointer-events:none;overflow:hidden;opacity:${(atmosStr * 0.26).toFixed(3)};filter:blur(${(16 - atmosStr * 5).toFixed(1)}px);transition:opacity .45s;${atmos ? atmos.a1 : ''}`,
+      atmos2: `position:absolute;inset:-12%;pointer-events:none;overflow:hidden;mix-blend-mode:screen;opacity:${(atmosStr * 0.34).toFixed(3)};filter:blur(${(30 - atmosStr * 10).toFixed(1)}px);transition:opacity .45s;${atmos ? atmos.a2 : ''}`,
+      ambient: `position:absolute;inset:-10%;pointer-events:none;background:radial-gradient(46% 34% at 50% 44%,oklch(0.62 0.16 ${hue} / ${(heat * 0.5).toFixed(3)}),rgba(0,0,0,0) 70%);filter:blur(30px);transition:background .18s linear`,
+      spot: `position:absolute;inset:0;pointer-events:none;z-index:30;opacity:${tier ? tier.dim : 0};background:radial-gradient(38% 42% at 50% 44%,rgba(0,0,0,0) 40%,rgba(4,2,10,.9) 100%);transition:opacity .8s ease`,
+      beams: `position:absolute;left:50%;top:50%;width:min(560px,120vmin);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;border-radius:50%;opacity:${tier && tier.beams ? 0.55 : 0};background:conic-gradient(from 0deg,oklch(0.85 ${oc} ${oh} / 0) 0deg,oklch(0.88 ${oc} ${oh} / .55) 6deg,oklch(0.85 ${oc} ${oh} / 0) 14deg,oklch(0.85 ${oc} ${oh} / 0) 45deg,oklch(0.88 ${oc} ${oh} / .45) 52deg,oklch(0.85 ${oc} ${oh} / 0) 60deg,oklch(0.85 ${oc} ${oh} / 0) 120deg,oklch(0.88 ${oc} ${oh} / .5) 128deg,oklch(0.85 ${oc} ${oh} / 0) 136deg,oklch(0.85 ${oc} ${oh} / 0) 210deg,oklch(0.88 ${oc} ${oh} / .45) 218deg,oklch(0.85 ${oc} ${oh} / 0) 226deg,oklch(0.85 ${oc} ${oh} / 0) 300deg,oklch(0.88 ${oc} ${oh} / .5) 308deg,oklch(0.85 ${oc} ${oh} / 0) 316deg);mask:radial-gradient(closest-side,rgba(0,0,0,0) 22%,#000 46%,rgba(0,0,0,0) 78%);-webkit-mask:radial-gradient(closest-side,rgba(0,0,0,0) 22%,#000 46%,rgba(0,0,0,0) 78%);filter:blur(1px);animation:gh-spin 26s linear infinite;transition:opacity 1s ease`,
+      word: openCard ? (openCard.tier === 'CORE' ? '' : `${openCard.tier} · ${openCard.type}`) : '',
+      wordStyle: `position:absolute;left:0;right:0;top:26px;text-align:center;pointer-events:none;z-index:20;font-size:clamp(20px,4.4vw,34px);font-weight:200;text-transform:uppercase;color:oklch(0.9 ${Math.min(0.12, oc)} ${oh});opacity:0;${tier && tier.rings ? `animation:gh-word${sfx} 1.6s cubic-bezier(.16,.7,.2,1) both` : ''}`,
+      ring1: `position:absolute;left:50%;top:50%;width:min(320px,70%);aspect-ratio:1;transform:translate(-50%,-50%) scale(.35);border-radius:50%;pointer-events:none;z-index:25;opacity:0;border:1px solid oklch(0.85 ${oc} ${oh} / .85);box-shadow:0 0 30px oklch(0.8 ${oc} ${oh} / .4);${tier && tier.rings >= 1 ? `animation:gh-ring${sfx} 1.15s cubic-bezier(.2,.75,.2,1) both` : ''}`,
+      ring2: `position:absolute;left:50%;top:50%;width:min(320px,70%);aspect-ratio:1;transform:translate(-50%,-50%) scale(.35);border-radius:50%;pointer-events:none;z-index:25;opacity:0;border:1px solid oklch(0.9 ${oc * 0.7} ${oh} / .55);${tier && tier.rings >= 2 ? `animation:gh-ring${sfx} 1.5s cubic-bezier(.2,.75,.2,1) .28s both` : ''}`,
+      tellWrap: `width:min(330px,88%);padding:12px 16px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(10,8,18,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 16px 40px rgba(0,0,0,.5);opacity:${showTell && (this.holdId || a.res > 0.02) ? 1 : 0};transform:translateY(${this.holdId ? 0 : 10}px);transition:opacity .3s,transform .4s`,
+      tellNum: heat > 0.005 ? heat.toFixed(2) : '0.00',
+      tellNumTone: `color:oklch(0.88 0.13 ${tellHue.toFixed(0)});font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.2em`,
+      tellFill: `height:100%;width:${(heat * 100).toFixed(1)}%;background:oklch(0.82 0.15 ${tellHue.toFixed(0)});box-shadow:0 0 12px oklch(0.78 0.17 ${tellHue.toFixed(0)} / .8);transition:width .12s linear`,
+      tellNote: resisting ? "It's fighting you — don't let go."
+        : heldCard && a.charge > 0.25 ? TIER[heldCard.tier].note : 'Keep holding to lock it.',
+      hint: phase === 'open' ? 'Tap anywhere to keep going' : this.holdId ? 'Hold…' : 'Press and hold the pack',
+      hintStyle: `font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.3em;text-transform:uppercase;color:rgba(239,234,247,${phase === 'open' ? 0.7 : 0.44});transition:color .3s`,
+      counter: `${String(cards.length - sealed.length - (openCard ? 1 : 0)).padStart(2, '0')} / 0${cards.length}`,
+      runTotal: money(totals),
+      runTotalStyle: `font-size:22px;font-weight:300;letter-spacing:-.01em;line-height:1.1;color:${cards.some((c) => c.status === 'pulled' && c.tier === 'GRAIL') ? '#f4dca6' : '#efeaf7'};transition:color .5s`,
+      tray: cards.map((c, i) => {
+        const open = c.status === 'pulled';
+        const isNext = c.status === 'open' || (!open && !openCard && sealed.indexOf(c) === 0);
+        return {
+          num: open ? '' : String(i + 1).padStart(2, '0'),
+          name: open ? c.mon : '',
+          type: open ? c.type.split(' / ')[0] : '',
+          value: open ? money(c.cents) : '',
+          box: `width:clamp(38px,6.4vw,48px);aspect-ratio:5/7;border-radius:7px;padding:5px;display:flex;flex-direction:column;overflow:hidden;justify-content:${open ? 'flex-end' : 'center'};align-items:${open ? 'stretch' : 'center'};position:relative;transition:all .5s cubic-bezier(.16,.7,.2,1);${open
+            ? `border:1px solid oklch(0.72 ${c.chroma} ${c.hue} / .45);background:radial-gradient(120% 90% at 50% 0%,oklch(0.32 ${c.chroma * 0.9} ${c.hue}),#100b1e 82%);box-shadow:0 10px 24px rgba(0,0,0,.45);animation:gh-rise .5s cubic-bezier(.16,.7,.2,1) both`
+            : `border:1px dashed rgba(255,255,255,${isNext ? 0.3 : 0.13});background:rgba(255,255,255,.02);transform:scale(${isNext ? 1 : 0.94})`}`,
+          bar: `position:absolute;left:0;right:0;top:0;height:3px;background:oklch(0.8 ${Math.max(0.08, c.chroma)} ${c.hue});opacity:${open ? 1 : 0};transition:opacity .5s`,
+          numStyle: `font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(255,255,255,${isNext ? 0.8 : 0.5})`,
+          nameStyle: 'font-size:9px;font-weight:400;line-height:1.15;color:rgba(239,234,247,.92)',
+          typeStyle: `font:500 7px/1 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;margin-top:2px;color:oklch(0.85 ${Math.min(0.1, c.chroma)} ${c.hue})`,
+          valStyle: `margin-top:4px;font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.04em;color:${c.tier === 'GRAIL' ? '#f4dca6' : 'rgba(239,234,247,.72)'}`,
+        };
+      }),
+      total: money(totals),
+      verdict: best ? `Paid $25.00 · best pull ${best.mon} ${best.title}` : 'Paid $25.00',
+      reviewCards: cards.map((c) => ({
+        mon: c.mon, title: c.title, tier: c.tier, type: c.type, value: money(c.cents),
+        card: `width:136px;min-height:180px;display:flex;flex-direction:column;padding:13px;border-radius:12px;border:1px solid oklch(0.7 ${c.chroma} ${c.hue} / .4);background:radial-gradient(120% 90% at 50% 0%,oklch(0.32 ${c.chroma * 0.9} ${c.hue}),#0f0a1c 82%);box-shadow:0 14px 34px rgba(0,0,0,.45)`,
+        tag: `font:700 8px/1 'JetBrains Mono',monospace;letter-spacing:.24em;color:oklch(0.88 ${Math.min(0.12, c.chroma)} ${c.hue})`,
+        typeStyle: `margin-top:4px;font:500 8px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.5)`,
+        val: `margin-top:8px;font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:${c.tier === 'GRAIL' ? '#f4dca6' : 'rgba(239,234,247,.85)'}`,
+      })),
+      onSurface: () => {
+        if (this.state.phase === 'open') { this.dock(); return; }
+        const top = this.state.cards.filter((c) => c.status === 'sealed')[0];
+        if (top) this.grab(top.id);
+      },
+      again: () => {
+        this.a = { charge: 0, res: 0, lift: 0, jitter: 0, tiltX: 0, tiltY: 0 };
+        this.holdId = null; this.openId = null;
+        this.setState({ cards: deal(this.props.grailChance ?? 0.18), phase: 'fan', done: false, reviewing: false });
+      },
+      review: () => this.setState({ done: false, reviewing: true }),
+      backToSummary: () => this.setState({ done: true, reviewing: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>
