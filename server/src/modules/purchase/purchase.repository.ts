@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import type { OwnershipWeightCurve, OwnershipWeightTable } from "@grailhaus/shared";
 import { pool } from "../../db/pool.js";
+import { computeDropOccurrence } from "../packs/dropRecurrence.js";
 import type { PurchaseResultPayload, PurchaseRow } from "./purchase.types.js";
 
 /** Everything below takes either the shared `pool` or a single checked-out `PoolClient` —
@@ -56,8 +57,15 @@ export async function lockProfileBalance(client: PoolClient, userId: string): Pr
 export interface LockedPack {
   priceCents: number;
   stockRemaining: number | null;
+  maxStock: number | null;
   goesLiveAt: string | null;
   endsAt: string | null;
+  /** 0=Sunday..6=Saturday. Null/empty = not a recurring drop — `goesLiveAt`/`endsAt` above are
+   * the real, authoritative window in that case. See purchase.service.ts's own recurrence
+   * handling for why a recurring drop can't use those two columns for its live/ended check. */
+  recurrenceWeekdays: number[] | null;
+  recurrenceTimeUtc: string | null;
+  recurrenceDurationMinutes: number | null;
 }
 
 export async function lockPackForPurchase(client: PoolClient, packId: string): Promise<LockedPack> {
@@ -70,15 +78,22 @@ export async function lockPackForPurchase(client: PoolClient, packId: string): P
     restock_amount: number | null;
     restock_interval_seconds: number | null;
     last_restocked_at: string | null;
+    recurrence_weekdays: number[] | null;
+    recurrence_time_utc: string | null;
+    recurrence_duration_minutes: number | null;
+    recurrence_last_reset_at: string | null;
   }>(
     `select price_cents, stock_remaining, max_stock, goes_live_at, ends_at,
-            restock_amount, restock_interval_seconds, last_restocked_at
+            restock_amount, restock_interval_seconds, last_restocked_at,
+            recurrence_weekdays, recurrence_time_utc, recurrence_duration_minutes, recurrence_last_reset_at
      from public.packs where id = $1 for update`,
     [packId]
   );
   if (rows.length === 0) throw new Error(`Pack not found: ${packId}`);
   const pack = rows[0];
   let stockRemaining = pack.stock_remaining;
+  let goesLiveAt = pack.goes_live_at;
+  let endsAt = pack.ends_at;
 
   // Lazy restock catch-up (PRD §19 — evergreen packs "restock after inventory is depleted"):
   // computed and persisted right here, under the same lock a purchase already needs, rather
@@ -106,11 +121,55 @@ export async function lockPackForPurchase(client: PoolClient, packId: string): P
     }
   }
 
+  // A recurring drop's *actual* live window is never the static goes_live_at/ends_at columns —
+  // those are only ever set once, by whoever configured the very first non-recurring version of
+  // this pack (or left null), and are never touched again once recurrence takes over (see
+  // packs.service.ts's resolveDropWindow, which already computes the real window for GET
+  // /packs — this is that same computation, done again here so the *purchase* path can't be
+  // tricked by a stale/irrelevant static timestamp into allowing a buy outside every real
+  // occurrence, or blocking one inside a real occurrence). Recomputed fresh under this same
+  // row lock, so it can't race against a concurrent recurrence-config edit either.
+  const hasRecurrence =
+    pack.recurrence_weekdays != null &&
+    pack.recurrence_weekdays.length > 0 &&
+    pack.recurrence_time_utc != null &&
+    (pack.recurrence_duration_minutes ?? 0) > 0;
+  if (hasRecurrence) {
+    const occurrence = computeDropOccurrence(
+      { weekdays: pack.recurrence_weekdays!, timeUtc: pack.recurrence_time_utc!, durationMinutes: pack.recurrence_duration_minutes! },
+      new Date()
+    );
+    if (occurrence) {
+      goesLiveAt = occurrence.goesLiveAt.toISOString();
+      endsAt = occurrence.endsAt.toISOString();
+      if (occurrence.phase === "live") {
+        // Same lazy-restock-on-read idea as above, just for a recurring drop's own per-
+        // occurrence stock reset instead of an evergreen pack's continuous trickle — see
+        // packs.repository.ts's resetStockForNewOccurrence for the read-path's version of this
+        // exact guard (only actually resets once per occurrence, not on every purchase).
+        const alreadyReset =
+          pack.recurrence_last_reset_at != null &&
+          new Date(pack.recurrence_last_reset_at).getTime() >= occurrence.goesLiveAt.getTime();
+        if (!alreadyReset && pack.max_stock != null) {
+          stockRemaining = pack.max_stock;
+          await client.query(
+            "update public.packs set stock_remaining = $2, recurrence_last_reset_at = $3 where id = $1",
+            [packId, stockRemaining, occurrence.goesLiveAt.toISOString()]
+          );
+        }
+      }
+    }
+  }
+
   return {
     priceCents: Number(pack.price_cents),
     stockRemaining,
-    goesLiveAt: pack.goes_live_at,
-    endsAt: pack.ends_at,
+    maxStock: pack.max_stock,
+    goesLiveAt,
+    endsAt,
+    recurrenceWeekdays: pack.recurrence_weekdays,
+    recurrenceTimeUtc: pack.recurrence_time_utc,
+    recurrenceDurationMinutes: pack.recurrence_duration_minutes,
   };
 }
 

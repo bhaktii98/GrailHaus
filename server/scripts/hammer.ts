@@ -4,9 +4,19 @@ import { pool } from "../src/db/pool.js";
 import { purchase } from "../src/modules/purchase/purchase.service.js";
 
 /**
- * Concurrency harness (PRD §26 / instructions.md's "you must ship a concurrency harness").
- * Fires N concurrent purchases at a real pack, temporarily pinned to a small finite stock,
- * and verifies inventory reconciles exactly afterward.
+ * Concurrency harness (PRD §26 / instructions.md's "you must ship a concurrency harness — fires
+ * N concurrent purchase requests at the last unit of a given SKU — shelf or drop"). Fires N
+ * concurrent purchases at a real pack, temporarily pinned to a small finite stock and forced
+ * live, and verifies inventory reconciles exactly afterward.
+ *
+ * Works against *any* pack tier — evergreen shelf, a one-off timed drop, or a recurring drop
+ * (see packs/dropRecurrence.ts) — by temporarily overriding whatever availability fields that
+ * pack has (goes_live_at/ends_at/recurrence_*) to "definitely live right now, no recurrence,"
+ * running the hammer, then restoring every touched field exactly as found. That's deliberate:
+ * the recurrence *math* already has its own unit tests (dropRecurrence.test.ts) — what this
+ * harness is actually proving is that concurrent purchases against the pack's stock lock can't
+ * oversell, which is the same question regardless of which availability model got the pack to
+ * "live" in the first place.
  *
  * All N attempts run as the same seeded test profile rather than N fabricated identities —
  * `profiles.id` has a real FK to `auth.users` (the Supabase signup trigger), so minting
@@ -15,19 +25,35 @@ import { purchase } from "../src/modules/purchase/purchase.service.js";
  * racing on the *pack's* stock lock can ever oversell — doesn't depend on the buyers being
  * distinct people; the pack-row lock is what's contended, and a purchase's own user_id has
  * no bearing on whether another concurrent purchase can slip past it. Every row this script
- * touches (balance, stock, pressure state) is restored to its original value on exit.
+ * touches (balance, stock, pressure state, drop timing) is restored to its original value on exit.
  *
  * Calls `purchase()` directly rather than over HTTP: what's actually under test is the
  * transaction/locking logic in purchase.service.ts (the thing that can oversell or
  * double-spend), not the JWT-verification layer in front of it, which is a separate,
  * already-covered concern.
  *
- * Usage: npm run hammer -- [concurrency] [startingStock]
+ * Usage: npm run hammer -- [concurrency] [startingStock] [tier]
+ *   npm run hammer                              → street_rip (evergreen shelf), 20 buyers, stock 5
+ *   npm run hammer -- 30 3 black_label_drop      → a timed/recurring drop pack instead
  */
 
 const TEST_USER_ID = "00000000-0000-0000-0000-000000000001";
-const CONCURRENCY = Number(process.argv[2] ?? 20);
+// 10, not the higher number this used to default to — the app's own pool.ts now caps at 8
+// connections (see that file's own comment on why: staying well under Supabase's shared
+// session-mode pooler limit), so this still exercises genuine queuing/contention (10 > 8)
+// without alone risking that shared ceiling. Pass a higher value explicitly to stress harder.
+const CONCURRENCY = Number(process.argv[2] ?? 10);
 const STARTING_STOCK = Number(process.argv[3] ?? 5);
+const TIER = process.argv[4] ?? "street_rip";
+
+interface DropTimingSnapshot {
+  goesLiveAt: string | null;
+  endsAt: string | null;
+  recurrenceWeekdays: number[] | null;
+  recurrenceTimeUtc: string | null;
+  recurrenceDurationMinutes: number | null;
+  recurrenceLastResetAt: string | null;
+}
 
 async function main() {
   const { rows: packRows } = await pool.query<{
@@ -35,9 +61,22 @@ async function main() {
     price_cents: string;
     item_count: number;
     stock_remaining: number | null;
-  }>("select id, price_cents, item_count, stock_remaining from public.packs where tier = 'street_rip'");
+    goes_live_at: string | null;
+    ends_at: string | null;
+    recurrence_weekdays: number[] | null;
+    recurrence_time_utc: string | null;
+    recurrence_duration_minutes: number | null;
+    recurrence_last_reset_at: string | null;
+    last_restocked_at: string | null;
+  }>(
+    `select id, price_cents, item_count, stock_remaining, goes_live_at, ends_at,
+            recurrence_weekdays, recurrence_time_utc, recurrence_duration_minutes, recurrence_last_reset_at,
+            last_restocked_at
+     from public.packs where tier = $1`,
+    [TIER]
+  );
   const pack = packRows[0];
-  if (!pack) throw new Error("Seed data missing: no 'street_rip' pack found — run against a seeded database.");
+  if (!pack) throw new Error(`Seed data missing: no '${TIER}' pack found — run against a seeded database.`);
 
   const { rows: profileRows } = await pool.query<{ balance_cents: string }>(
     "select balance_cents from public.profiles where id = $1",
@@ -48,8 +87,18 @@ async function main() {
   }
 
   const originalStock = pack.stock_remaining;
+  const originalLastRestockedAt = pack.last_restocked_at;
   const originalBalance = Number(profileRows[0].balance_cents);
   const priceCents = Number(pack.price_cents);
+  const originalTiming: DropTimingSnapshot = {
+    goesLiveAt: pack.goes_live_at,
+    endsAt: pack.ends_at,
+    recurrenceWeekdays: pack.recurrence_weekdays,
+    recurrenceTimeUtc: pack.recurrence_time_utc,
+    recurrenceDurationMinutes: pack.recurrence_duration_minutes,
+    recurrenceLastResetAt: pack.recurrence_last_reset_at,
+  };
+  const isDrop = originalTiming.goesLiveAt != null || originalTiming.recurrenceWeekdays != null;
 
   const { rows: pressureRows } = await pool.query<{ consecutive_without_qualifying: number }>(
     "select consecutive_without_qualifying from public.user_pressure_state where user_id = $1 and pack_id = $2",
@@ -65,14 +114,37 @@ async function main() {
   let exitCode = 0;
   const purchaseIds: string[] = [];
   try {
-    await pool.query("update public.packs set stock_remaining = $1 where id = $2", [STARTING_STOCK, pack.id]);
+    // `last_restocked_at = now()` alongside the forced stock level — an evergreen pack's own
+    // lazy-restock-catchup (packs.repository.ts's lockPackForPurchase, a real, correct feature
+    // for actual usage) reads elapsed time since this column on every single lock acquisition.
+    // Left at its real, possibly-hours-stale value, the very first purchase in the run sees a
+    // huge backlog of "owed" restock ticks and refills the pack back toward max_stock *during*
+    // the hammer — which silently erases the low-stock scenario this harness exists to test
+    // (this is exactly what happened before this line existed: every buyer "succeeded" because
+    // the pack was quietly restocked out from under the test, not because of an oversell bug).
+    await pool.query("update public.packs set stock_remaining = $1, last_restocked_at = now() where id = $2", [
+      STARTING_STOCK,
+      pack.id,
+    ]);
     await pool.query("update public.profiles set balance_cents = $1 where id = $2", [
       priceCents * CONCURRENCY * 2,
       TEST_USER_ID,
     ]);
+    if (isDrop) {
+      // Forced into "definitely live, no recurrence, no end in sight" for the duration of the
+      // run — a drop pack the harness picked wouldn't otherwise reliably be inside its own live
+      // window at whatever moment this happens to run.
+      await pool.query(
+        `update public.packs
+         set goes_live_at = now() - interval '1 minute', ends_at = null,
+             recurrence_weekdays = null, recurrence_time_utc = null, recurrence_duration_minutes = null
+         where id = $1`,
+        [pack.id]
+      );
+    }
 
     console.log(
-      `Hammering ${pack.id} (street_rip): stock=${STARTING_STOCK}, ${CONCURRENCY} concurrent buyers, $${(
+      `Hammering ${pack.id} (${TIER}${isDrop ? ", drop" : ""}): stock=${STARTING_STOCK}, ${CONCURRENCY} concurrent buyers, $${(
         priceCents / 100
       ).toFixed(2)}/pack\n`
     );
@@ -134,7 +206,24 @@ async function main() {
       ]);
     }
     await pool.query("update public.profiles set balance_cents = $1 where id = $2", [originalBalance, TEST_USER_ID]);
-    await pool.query("update public.packs set stock_remaining = $1 where id = $2", [originalStock, pack.id]);
+    await pool.query(
+      `update public.packs
+       set stock_remaining = $2, goes_live_at = $3, ends_at = $4,
+           recurrence_weekdays = $5, recurrence_time_utc = $6, recurrence_duration_minutes = $7,
+           recurrence_last_reset_at = $8, last_restocked_at = $9
+       where id = $1`,
+      [
+        pack.id,
+        originalStock,
+        originalTiming.goesLiveAt,
+        originalTiming.endsAt,
+        originalTiming.recurrenceWeekdays,
+        originalTiming.recurrenceTimeUtc,
+        originalTiming.recurrenceDurationMinutes,
+        originalTiming.recurrenceLastResetAt,
+        originalLastRestockedAt,
+      ]
+    );
     await pool.end();
   }
 

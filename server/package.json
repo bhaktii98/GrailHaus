@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --noEmit && npm run bundle",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js --external:@fastify/cors --external:@fastify/swagger --external:@fastify/swagger-ui --external:@fastify/websocket --external:decimal.js --external:dotenv --external:fastify --external:fastify-plugin --external:pg",
     "start": "node dist/index.js",
     "hammer": "tsx scripts/hammer.ts",
     "test": "vitest run",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@types/node": "^22.9.0",
     "@types/pg": "^8.11.10",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.9"
