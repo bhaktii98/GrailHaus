@@ -1,5 +1,6 @@
 import { upsertCategory } from "@/lib/actions";
 import { Button, Field, Info, Input, SectionLabel } from "@/components/ui";
+import { HapticEditor, LightingEditor, OpeningBeatsEditor, type BeatRow, type HapticRow, type LightRow } from "@/components/RevealConfigEditors";
 
 export interface CategoryRow {
   id: string;
@@ -30,8 +31,6 @@ const MESH_ARCHETYPES = ["tear-pack", "lift-lid-box", "flap-bag"];
 
 const selectClass =
   "rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text outline-none focus:border-accent";
-const textareaClass =
-  "rounded-lg border border-border bg-surface-2 px-3 py-2 font-mono text-xs text-text outline-none focus:border-accent";
 
 /** The create/edit form for a category's whole reveal personality. Shared between
  * /categories/new (category=null) and /categories/[id]/edit (category set) — same fields,
@@ -110,54 +109,29 @@ export function CategoryForm({ category }: { category: CategoryRow | null }) {
         </Field>
       </section>
 
-      <section className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-        <SectionLabel className="col-span-1 sm:col-span-2">
-          Advanced (raw JSON)
+      <section className="grid grid-cols-1 gap-y-6">
+        <SectionLabel>
+          Reveal choreography
           <Info>
-            Lighting rig, haptic tracks, and narrated opening beats — arrays, edited as raw JSON rather than a bespoke
-            sub-form for each. Leave a field empty to keep it unset/empty.
+            Lighting rig, haptic tracks, and narrated opening beats for this category's reveal. Each row here is one
+            entry in the array the app engine actually reads (app/src/engine/core/types.ts) — add or remove rows
+            instead of hand-editing JSON.
           </Info>
         </SectionLabel>
-        <Field label="Lighting (JSON array of {kind, position?, intensity, color?})">
-          <textarea
-            name="lighting"
-            rows={3}
-            defaultValue={c ? JSON.stringify(c.lighting) : '[{"kind":"ambient","intensity":0.5}]'}
-            className={textareaClass}
-          />
+        <Field label="Lighting" info="At least one light — ambient sets a flat fill, directional adds a positioned/colored beam.">
+          <LightingEditor name="lighting" defaultValue={(c?.lighting as LightRow[]) ?? []} />
         </Field>
-        <div />
-        <Field label="Haptic — common (JSON array of {atMs, kind})">
-          <textarea
-            name="hapticCommon"
-            rows={3}
-            defaultValue={c ? JSON.stringify(c.haptic_common) : '[{"atMs":0,"kind":"light"}]'}
-            className={textareaClass}
-          />
+        <Field label="Haptic — common" info="Vibration beats for a non-rare pull, in order.">
+          <HapticEditor name="hapticCommon" defaultValue={(c?.haptic_common as HapticRow[]) ?? []} />
         </Field>
-        <Field label="Haptic — rare (JSON array of {atMs, kind})">
-          <textarea
-            name="hapticRare"
-            rows={3}
-            defaultValue={c ? JSON.stringify(c.haptic_rare) : '[{"atMs":0,"kind":"light"},{"atMs":600,"kind":"success"}]'}
-            className={textareaClass}
-          />
+        <Field label="Haptic — rare" info="Vibration beats for a rare pull — usually longer, ending in 'success'.">
+          <HapticEditor name="hapticRare" defaultValue={(c?.haptic_rare as HapticRow[]) ?? [{ atMs: 0, kind: "light" }, { atMs: 600, kind: "success" }]} />
         </Field>
-        <Field label="Opening beats — common (optional, JSON array of {atMs, label}, or blank)">
-          <textarea
-            name="openingBeatsCommon"
-            rows={2}
-            defaultValue={c?.opening_beats_common ? JSON.stringify(c.opening_beats_common) : ""}
-            className={textareaClass}
-          />
+        <Field label="Opening beats — common" info="Optional on-screen labels narrating a non-rare reveal (e.g. 'LID OPENING'). Leave empty for none.">
+          <OpeningBeatsEditor name="openingBeatsCommon" defaultValue={(c?.opening_beats_common as BeatRow[] | null) ?? null} />
         </Field>
-        <Field label="Opening beats — rare (optional, JSON array of {atMs, label}, or blank)">
-          <textarea
-            name="openingBeatsRare"
-            rows={2}
-            defaultValue={c?.opening_beats_rare ? JSON.stringify(c.opening_beats_rare) : ""}
-            className={textareaClass}
-          />
+        <Field label="Opening beats — rare" info="Optional on-screen labels narrating a rare reveal. Leave empty for none.">
+          <OpeningBeatsEditor name="openingBeatsRare" defaultValue={(c?.opening_beats_rare as BeatRow[] | null) ?? null} />
         </Field>
       </section>
 

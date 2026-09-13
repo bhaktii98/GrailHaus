@@ -1,9 +1,14 @@
 import { pool } from "./db";
-import { computeRealEvForAllPacks } from "./ev";
+import { computeSteadyStateEvForAllPacks } from "./ev";
 import type { Category, PackSku, RarityTierLevel } from "@grailhaus/shared";
 
 export interface PackWithEv extends PackSku {
+  /** Steady-state EV (see computeSteadyStateEvForAllPacks) — what a real repeat buyer actually
+   * costs on average once the pity/pressure system is accounted for, not just a first pull. */
   evCents: number;
+  /** The naive first-pull-only number, for comparison — how much of `evCents` (if any) is the
+   * pity system's own cost. */
+  noPityEvCents: number;
 }
 
 export async function listPacksWithEv(): Promise<PackWithEv[]> {
@@ -35,7 +40,7 @@ export async function listPacksWithEv(): Promise<PackWithEv[]> {
     pool.query<{ pack_id: string; slot_position: number; rarity_tier_level: number; probability_percent: string }>(
       "select pack_id, slot_position, rarity_tier_level, probability_percent from public.slot_probabilities"
     ),
-    computeRealEvForAllPacks(),
+    computeSteadyStateEvForAllPacks(),
   ]);
 
   const rarityByCategory = new Map<string, PackSku["rarityTiers"]>();
@@ -87,6 +92,7 @@ export async function listPacksWithEv(): Promise<PackWithEv[]> {
       phase: "live",
     };
 
-    return { ...packSku, evCents: evByPack.get(pack.id) ?? 0 };
+    const ev = evByPack.get(pack.id);
+    return { ...packSku, evCents: ev?.withPityCents ?? 0, noPityEvCents: ev?.noPityCents ?? 0 };
   });
 }

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { pool } from "@/lib/db";
 import { updatePack } from "@/lib/actions";
-import { computeRealEvCents } from "@/lib/ev";
+import { computeSteadyStateEvCents } from "@/lib/ev";
 import { Button, Card, CardTitle, Field, Info, Input, PageHeader, Pill, Table, TableInput, Td, Th, Thead } from "@/components/ui";
 
 /** Index = `Date#getUTCDay()` (0=Sunday..6=Saturday) — matches the `recurrence_weekdays` column
@@ -89,10 +89,11 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
   if (!data) notFound();
   const { pack, rarityTiers, slots } = data;
 
-  const evCents = await computeRealEvCents(pack.id);
+  const { withPityCents: evCents, noPityCents } = await computeSteadyStateEvCents(pack.id);
   const priceCents = Number(pack.price_cents);
   const returnPct = (evCents / priceCents) * 100;
   const tone = returnPct >= 85 && returnPct <= 100 ? "good" : returnPct > 100 && returnPct <= 120 ? "warn" : returnPct < 85 && returnPct >= 70 ? "warn" : "danger";
+  const pityAddsCents = evCents - noPityCents;
 
   const updateWithId = updatePack.bind(null, pack.id);
 
@@ -107,6 +108,12 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
       <div className="mb-6 flex items-center gap-3">
         <span className="text-sm text-text-soft">
           Est. EV {`$${(evCents / 100).toFixed(2)}`} on {`$${(priceCents / 100).toFixed(2)}`}
+          {pityAddsCents > 0 && (
+            <span className="ml-2 text-text-mute">
+              (${(noPityCents / 100).toFixed(2)} first pull, Pressure Rules add ${(pityAddsCents / 100).toFixed(2)} for a
+              repeat buyer)
+            </span>
+          )}
         </span>
         <Pill tone={tone}>{returnPct.toFixed(1)}% return</Pill>
       </div>

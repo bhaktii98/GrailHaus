@@ -35,8 +35,8 @@ export default async function OverviewPage() {
     <div>
       <PageHeader
         title="Overview"
-        info="Every pack's price against its estimated payout. This is the first place to look after changing a pack's price or its slot-probability grid — it tells you immediately whether that change broke the economics."
-        description="Expected value per pack, computed from the pack's own catalog items. A pack whose EV sits far from its target return is the exact thing this dashboard exists to catch and fix."
+        info="Every pack's price against its estimated payout. This is the first place to look after changing a pack's price, its slot-probability grid, or its Pressure Rules — it tells you immediately whether that change broke the economics."
+        description="Steady-state expected value per pack — a realistic repeat buyer's average payout, walking the pack's own Pressure Rules (Grail Pressure / Curator's Guarantee) forward exactly like a real account's purchase history does, not just one isolated pull. A pack whose EV sits far from its target return is the exact thing this dashboard exists to catch and fix."
       />
 
       <div className="flex flex-col gap-8">
@@ -51,7 +51,7 @@ export default async function OverviewPage() {
                 <tr>
                   <Th>Pack</Th>
                   <Th info="What a user pays for one rip of this pack.">Price</Th>
-                  <Th info="The real average payout of this pack: for every pull position, (odds of each rarity tier) × (the actual average value of this pack's own catalog items at that tier), summed. This is the pack's own real items, not a category-wide approximation — editing Rarity Tiers won't move this number; editing this pack's price or odds will.">
+                  <Th info="A realistic repeat buyer's average payout per pack: (odds of each rarity tier, including whatever this pack's Pressure Rules add once a streak builds) × (the actual average value of this pack's own catalog items at that tier). This is the pack's own real items, not a category-wide approximation — editing Rarity Tiers won't move this number; editing this pack's price, its odds, or its Pressure Rules will.">
                     Est. EV
                   </Th>
                   <Th info="Est. EV as a % of price. Green = within the healthy 85–100% target band. Amber = drifting off target. Red = seriously wrong — either the platform is losing money on this pack (over 100%) or it feels stingy to rip (well under 85%).">
@@ -63,11 +63,19 @@ export default async function OverviewPage() {
               <tbody>
                 {group.rows.map((pack) => {
                   const returnPct = (pack.evCents / pack.priceCents) * 100;
+                  const pityAddsCents = pack.evCents - pack.noPityEvCents;
                   return (
                     <tr key={pack.id}>
                       <TdStrong info={PACK_DESCRIPTIONS[pack.tier]}>{pack.name}</TdStrong>
                       <TdNum>{usd(pack.priceCents)}</TdNum>
-                      <TdNum>{usd(pack.evCents)}</TdNum>
+                      <TdNum>
+                        {usd(pack.evCents)}
+                        {pityAddsCents > 0 && (
+                          <span className="mt-0.5 block text-xs font-normal text-text-mute">
+                            {usd(pack.noPityEvCents)} first pull, pity adds {usd(pityAddsCents)}
+                          </span>
+                        )}
+                      </TdNum>
                       <Td>
                         <Pill tone={returnTone(returnPct)}>{returnPct.toFixed(1)}%</Pill>
                       </Td>
