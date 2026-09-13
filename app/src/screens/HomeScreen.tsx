@@ -222,12 +222,18 @@ export function HomeScreen() {
   );
 }
 
+/** The Featured Drop banner — same look it's always had; the only change here is that a "soon"
+ * drop can now occupy this slot too, not just a "live" one (see useHomeViewModel's
+ * featuredDropRaw), so the countdown always has a real target: `endsAt` while live, `goesLiveAt`
+ * while soon — never a blank timer waiting for one phase specifically. */
 function FeaturedDropCard({ drop, onPress }: { drop: DropView; onPress: () => void }) {
-  const { sku } = drop;
+  const { sku, phase } = drop;
+  const isLive = phase === "live";
   const remaining = sku.stockRemaining;
   const max = sku.maxStock;
   const pips = max != null && max > 0 && max <= 20 ? max : null;
   const filledPips = pips != null && remaining != null ? Math.round((remaining / max!) * pips) : 0;
+  const countdownTarget = isLive ? sku.endsAt : sku.goesLiveAt;
 
   return (
     <View style={styles.featured}>
@@ -249,10 +255,11 @@ function FeaturedDropCard({ drop, onPress }: { drop: DropView; onPress: () => vo
       <View style={styles.featuredGlow} pointerEvents="none" />
 
       {/* The live badge sits inside the bordered showcase box, over the photo/scrim — same
-          placement as the reference's own `heroContent` — instead of floating above it. */}
+          placement as the reference's own `heroContent` — instead of floating above it. Only
+          shown while actually live; a "soon" drop in this slot has nothing pulsing yet. */}
       <View style={styles.featuredEyebrowRow}>
-        <View style={styles.liveDot} />
-        <Text style={styles.featuredEyebrow}>{copy.featuredDrop.eyebrow}</Text>
+        {isLive && <View style={styles.liveDot} />}
+        <Text style={styles.featuredEyebrow}>{isLive ? copy.featuredDrop.eyebrow : copy.featuredDrop.eyebrowSoon}</Text>
       </View>
 
       <Text style={styles.featuredKicker}>
@@ -294,18 +301,19 @@ function FeaturedDropCard({ drop, onPress }: { drop: DropView; onPress: () => vo
         </View>
       )}
 
-      {/* CTA beside a real countdown — GrailhausHome.js's own footer pairing — shown only when
-          this drop actually has a real end time (`sku.endsAt`), never a fabricated clock. */}
+      {/* CTA beside a real countdown — GrailhausHome.js's own footer pairing. Always shown now:
+          `countdownTarget` is `endsAt` while live or `goesLiveAt` while soon, both server-computed
+          (see useDropsViewModel), so this is never a fabricated clock. */}
       <View style={styles.heroFooter}>
         <Pressable onPress={onPress} style={styles.featuredCtaWrap}>
           <LinearGradient colors={["#FF7A9C", "#C4183C"]} style={styles.featuredCta}>
             <Text style={styles.featuredCtaLabel}>{copy.featuredDrop.cta}</Text>
           </LinearGradient>
         </Pressable>
-        {sku.endsAt && (
+        {countdownTarget && (
           <View style={styles.endsInWrap}>
-            <Text style={styles.endsInLabel}>ENDS IN</Text>
-            <Countdown target={sku.endsAt} color="#fff" />
+            <Text style={styles.endsInLabel}>{isLive ? "ENDS IN" : "STARTS IN"}</Text>
+            <Countdown target={countdownTarget} color="#fff" />
           </View>
         )}
       </View>

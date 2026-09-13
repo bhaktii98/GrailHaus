@@ -185,6 +185,7 @@ export const home = {
   },
   featuredDrop: {
     eyebrow: "FEATURED DROP · LIVE",
+    eyebrowSoon: "FEATURED DROP · SOON",
     left: (remaining: number, max: number) => `${remaining} / ${max}`,
     // Static placeholder — no live viewer-count backend exists yet (same call as the
     // Drop screens' claims feed: match the mockup's number rather than invent one).
