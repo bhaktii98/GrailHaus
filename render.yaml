@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: grailhaus-server
+    runtime: node
+    plan: starter
+    region: singapore
+    rootDir: .
+    # Installs every workspace (so @grailhaus/shared resolves for @grailhaus/server), then builds
+    # just the server — tsc typechecks src/, then esbuild bundles it (with @grailhaus/shared
+    # inlined, since that package ships raw TS with no compiled output of its own) into one plain
+    # dist/index.js. See server/package.json's own "build"/"bundle" scripts.
+    buildCommand: npm install && npm run build --workspace=server
+    startCommand: npm run start --workspace=server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.0.0
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: APP_JWT_SECRET
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false
