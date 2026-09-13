@@ -63,7 +63,7 @@ export function useHomeViewModel() {
   const { drops, isLoading: dropsLoading } = useDropsViewModel();
   const collection = useCollectionViewModel();
   const listingsQuery = useQuery({ queryKey: ["listings", "all"], queryFn: () => marketplaceService.browse() });
-  const { categories, byId: categoriesById } = useCategoriesViewModel();
+  const { categories, byId: categoriesById, refetch: refetchCategories } = useCategoriesViewModel();
 
   // Keyed by every category in the categories table, not a hardcoded cards/watches pair — a
   // category with zero evergreen packs yet still gets an entry (tierCount 0), same "show it, but
@@ -106,6 +106,12 @@ export function useHomeViewModel() {
     [listingsQuery.data]
   );
 
+  async function refetch() {
+    // packsQuery shares its ["packs","all"] key with useDropsViewModel (see the comment above),
+    // so refetching it also refreshes `drops` — no separate drops refetch needed.
+    await Promise.all([packsQuery.refetch(), listingsQuery.refetch(), collection.refetch(), refetchCategories()]);
+  }
+
   return {
     evergreenByCategory,
     featuredDrop,
@@ -113,5 +119,6 @@ export function useHomeViewModel() {
     collectionProgress,
     recentListings,
     isLoading: packsQuery.isLoading || dropsLoading,
+    refetch,
   };
 }

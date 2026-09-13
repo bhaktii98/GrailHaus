@@ -3,7 +3,8 @@ import { pool } from "../../db/pool.js";
 import type { ItemRow, PackRow, PressureRuleRow, RarityTierRow, SlotProbabilityRow } from "./packs.types.js";
 
 const PACK_COLUMNS =
-  "id, category, tier, name, price_cents, item_count, stock_remaining, max_stock, goes_live_at, ends_at";
+  "id, category, tier, name, price_cents, item_count, stock_remaining, max_stock, goes_live_at, ends_at, " +
+  "recurrence_weekdays, recurrence_time_utc, recurrence_duration_minutes, recurrence_last_reset_at";
 
 export async function findPacks(category?: string): Promise<PackRow[]> {
   if (category) {
@@ -81,9 +82,17 @@ export interface PackCoreUpdate {
    * is what omitting the key entirely means. */
   restockAmount?: number | null;
   restockIntervalSeconds?: number | null;
-  /** null = evergreen (available immediately) — a timed date makes it a drop. */
+  /** null = evergreen (available immediately) — a timed date makes it a drop. Ignored for
+   * display (but still stored) once `recurrenceWeekdays` turns this into a recurring drop —
+   * see packs.service.ts's `applyRecurringDropWindow`. */
   goesLiveAt?: string | null;
   endsAt?: string | null;
+  /** 0=Sunday..6=Saturday. Null/empty clears recurrence, turning this back into a plain
+   * evergreen/one-off pack using whatever goesLiveAt/endsAt is stored. */
+  recurrenceWeekdays?: number[] | null;
+  /** "HH:MM" or "HH:MM:SS", UTC. */
+  recurrenceTimeUtc?: string | null;
+  recurrenceDurationMinutes?: number | null;
 }
 
 const CORE_UPDATE_COLUMNS: Record<keyof PackCoreUpdate, string> = {
@@ -95,6 +104,9 @@ const CORE_UPDATE_COLUMNS: Record<keyof PackCoreUpdate, string> = {
   restockIntervalSeconds: "restock_interval_seconds",
   goesLiveAt: "goes_live_at",
   endsAt: "ends_at",
+  recurrenceWeekdays: "recurrence_weekdays",
+  recurrenceTimeUtc: "recurrence_time_utc",
+  recurrenceDurationMinutes: "recurrence_duration_minutes",
 };
 
 export async function updatePackCoreFields(client: PoolClient, packId: string, updates: PackCoreUpdate): Promise<void> {
@@ -111,6 +123,23 @@ export async function updatePackCoreFields(client: PoolClient, packId: string, u
   if (sets.length === 0) return;
   params.push(packId);
   await client.query(`update public.packs set ${sets.join(", ")} where id = $${params.length}`, params);
+}
+
+/**
+ * Lazily restocks a recurring drop the first time any request notices its current occurrence
+ * has begun — see dropRecurrence.ts and packs.service.ts's `applyRecurringDropWindow` for the
+ * full picture. The WHERE guard (not just the caller's own check) is what makes this safe to
+ * call on every read of a live recurring drop without re-crediting stock on every request: once
+ * `recurrence_last_reset_at` reaches `occurrenceStart`, this becomes a no-op until the *next*
+ * occurrence's start is a later timestamp.
+ */
+export async function resetStockForNewOccurrence(packId: string, occurrenceStart: Date, maxStock: number): Promise<void> {
+  await pool.query(
+    `update public.packs
+     set stock_remaining = $1, recurrence_last_reset_at = $2
+     where id = $3 and (recurrence_last_reset_at is null or recurrence_last_reset_at < $2)`,
+    [maxStock, occurrenceStart.toISOString(), packId]
+  );
 }
 
 export async function upsertSlotProbability(

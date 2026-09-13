@@ -20,8 +20,6 @@ export const brand = {
 
 export const splash = {
   version: "Ver. 1.0.0",
-  supportIdLabel: "Support ID:",
-  tapToStart: "TAP TO START",
 } as const;
 
 /**
@@ -207,14 +205,17 @@ export const home = {
   collectionProgress: {
     title: "Your Collection Progress",
     action: "Open",
+    empty: "Rip your first pack to start tracking your collection.",
   },
   marketplaceHighlights: {
     title: "Marketplace Highlights",
     action: "Browse",
+    empty: "Nothing listed yet — be the first.",
   },
 } as const;
 
 export const dropDetail = {
+  tagline: "Exclusive pieces. Limited claims.\nOnce it's gone, it's gone.",
   body: (sku: { category: string; itemCount: number; maxStock: number | null }) => {
     // "cards" gets its own count phrasing; every other category (watches today, any new one
     // added later) always claims exactly one item per box.
@@ -282,6 +283,7 @@ export const auth = {
   usernameInvalid: "3-20 characters: lowercase letters, numbers, underscore.",
   claimCta: "Continue",
 
+  welcomeBackEyebrow: "SIGNED IN",
   welcomeBackTitle: (username: string) => `Welcome, @${username}`,
   welcomeBackBody: "Your vault is ready.",
   enterGrailhaus: "Enter GrailHaus",

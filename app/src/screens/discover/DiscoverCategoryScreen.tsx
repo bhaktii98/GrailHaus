@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, type CompositeNavigationProp, type RouteProp } from "@react-navigation/native";
@@ -10,6 +10,7 @@ import { CardFace } from "../../components/CardFace";
 import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { useDiscoverViewModel, type DiscoverGroup, type DiscoverItem } from "../../viewmodels/useDiscoverViewModel";
+import { useManualRefresh } from "../../hooks/useManualRefresh";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
 import { useCategoriesViewModel } from "../../viewmodels/useCategoriesViewModel";
 import { useTabBarClearance } from "../../navigation/tabBarVisibility";
@@ -42,6 +43,7 @@ export function DiscoverCategoryScreen() {
   const insets = useSafeAreaInsets();
   const { category, autoFocusSearch } = useRoute<Route>().params;
   const vm = useDiscoverViewModel(category);
+  const { isRefreshing, refresh } = useManualRefresh(vm.refetch);
   const [query, setQuery] = useState("");
   const [facet, setFacet] = useState<Facet>("identity");
   // Cards gets its own bespoke visual register (wash/border color, icon shape); everything else
@@ -185,6 +187,7 @@ export function DiscoverCategoryScreen() {
           data={identityResults}
           keyExtractor={(g: DiscoverGroup) => g.key}
           contentContainerStyle={[styles.list, { paddingBottom: tabBarClearance }]}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
           ListEmptyComponent={<Text style={styles.empty}>{copy.empty}</Text>}
           renderItem={({ item: group }: { item: DiscoverGroup }) => {
             const primary = group.versions[0];
@@ -219,6 +222,7 @@ export function DiscoverCategoryScreen() {
           data={facet === "collections" ? collectionGroups : rarityGroups}
           keyExtractor={(g: RowGroup) => g.key}
           contentContainerStyle={[styles.list, { paddingBottom: tabBarClearance }]}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
           ListEmptyComponent={<Text style={styles.empty}>{copy.empty}</Text>}
           renderItem={({ item: group }: { item: RowGroup }) => (
             <Pressable style={styles.row} onPress={() => handleGroupPress(group)}>

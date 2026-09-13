@@ -1,4 +1,4 @@
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -7,6 +7,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { computePriceDrift } from "@grailhaus/shared";
 import type { OwnedItem } from "@grailhaus/shared";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
+import { useManualRefresh } from "../../hooks/useManualRefresh";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
 import { useTabBarClearance } from "../../navigation/tabBarVisibility";
 import { WatchDial } from "../../components/WatchDial";
@@ -14,7 +15,7 @@ import { PnlPill } from "../../components/PnlPill";
 import { itemArtGradient } from "../../content/cardArt";
 import { useDriftClock } from "../../lib/driftClock";
 import { money } from "../../lib/money";
-import { ink, typography } from "../../theme/tokens";
+import { colors, ink, typography } from "../../theme/tokens";
 import { vault as copy } from "../../content/copy";
 import type { CollectionStackParamList } from "../../navigation/CollectionStack";
 
@@ -27,6 +28,7 @@ export function VaultScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const vm = useCollectionViewModel();
+  const { isRefreshing, refresh } = useManualRefresh(vm.refetch);
   // Admin-configurable (rarity_tiers table), not a hardcoded name map — see useRarityTiers.ts.
   const rarityTiers = useRarityTiers("watches");
   const tabBarClearance = useTabBarClearance();
@@ -60,6 +62,7 @@ export function VaultScreen() {
         data={vm.watches}
         keyExtractor={(o: OwnedItem) => o.ownedItemId}
         contentContainerStyle={[styles.list, { paddingBottom: tabBarClearance }]}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
         ListEmptyComponent={<Text style={styles.empty}>{copy.empty}</Text>}
         renderItem={({ item: owned }: { item: OwnedItem }) => {
           // Same live value and P&L definition as the Portfolio grid — the vault is the quieter

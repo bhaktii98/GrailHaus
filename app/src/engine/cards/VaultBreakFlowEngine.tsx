@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import type { PackSku, PulledOwnedItem } from "@grailhaus/shared";
 import { usePackFlowStore } from "../../state/packFlowStore";
+import { usePackFlowViewModel } from "../../viewmodels/usePackFlowViewModel";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
 import { ProcessingView, ReadyView, SummaryView } from "./CardFlowEngine";
 import { VaultTearStage } from "./vaultReveal/VaultTearStage";
 import { VaultCardFanReveal } from "./vaultReveal/VaultCardFanReveal";
+import { playSfx } from "../../lib/sfx";
 
 type Step = "processing" | "ready" | "tear" | "cards" | "summary";
 
@@ -45,8 +47,13 @@ export function VaultBreakFlowEngine({
   // See CardFlowEngine's own comment on this flag (state/packFlowStore.ts) — true only for a
   // flow reconstructed from disk after a process death, never a fresh purchase.
   const resumedToSummary = usePackFlowStore((s) => s.resumedToSummary);
+  // Non-null only alongside a partial-progress resume — see CardFlowEngine's own comment.
+  const resumedOpenedCount = usePackFlowStore((s) => s.resumedOpenedCount);
+  const { recordCardOpened } = usePackFlowViewModel();
   const { owned } = useCollectionViewModel();
-  const [step, setStep] = useState<Step>(resumedToSummary ? "summary" : "processing");
+  const [step, setStep] = useState<Step>(
+    resumedOpenedCount != null ? "cards" : resumedToSummary ? "summary" : "processing"
+  );
   const [visibleStatusRows, setVisibleStatusRows] = useState(0);
 
   // Same commons-first ordering as CardFlowEngine.orderedItems.
@@ -85,6 +92,7 @@ export function VaultBreakFlowEngine({
   }
 
   function handleTearComplete() {
+    playSfx("packTear");
     setStep("cards");
   }
 
@@ -112,7 +120,15 @@ export function VaultBreakFlowEngine({
   }
 
   if (step === "cards") {
-    return <VaultCardFanReveal items={orderedItems} sku={sku} onDone={handleCardsDone} />;
+    return (
+      <VaultCardFanReveal
+        items={orderedItems}
+        sku={sku}
+        initialOpenedCount={resumedOpenedCount ?? undefined}
+        onProgress={recordCardOpened}
+        onDone={handleCardsDone}
+      />
+    );
   }
 
   // "summary"

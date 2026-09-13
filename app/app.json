@@ -20,6 +20,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#0B0716"
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
+        }
       ]
     ],
     "ios": {
@@ -38,6 +44,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1bed72b8-56de-425d-8d7c-1814ca44a7e0"
+      }
+    },
+    "owner": "dangri"
   }
 }

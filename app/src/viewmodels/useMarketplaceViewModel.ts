@@ -78,6 +78,10 @@ export function useMarketplaceViewModel(category?: Category) {
     enabled: isSignedIn,
   });
 
+  async function refetch() {
+    await Promise.all([browseQuery.refetch(), isSignedIn ? mineQuery.refetch() : Promise.resolve()]);
+  }
+
   return {
     listings: browseQuery.data ?? [],
     isLoading: browseQuery.isLoading,
@@ -88,5 +92,6 @@ export function useMarketplaceViewModel(category?: Category) {
     myActiveCount: (mineQuery.data ?? []).filter((l) => l.status === "active").length,
     isBuying,
     buy,
+    refetch,
   };
 }

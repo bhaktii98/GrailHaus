@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +10,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Category, PackSku } from "@grailhaus/shared";
 import { useSessionViewModel } from "../viewmodels/useSessionViewModel";
 import { useShelfViewModel } from "../viewmodels/useShelfViewModel";
+import { useManualRefresh } from "../hooks/useManualRefresh";
 import { useCategoriesViewModel } from "../viewmodels/useCategoriesViewModel";
 import { useAuthStore } from "../state/authStore";
 import { PackTile, ART_GRADIENT, tierLabel, HERO_TIER } from "../components/PackTile";
@@ -18,7 +19,7 @@ import { CategorySwitch } from "../components/CategorySwitch";
 import { Crown } from "../components/Crown";
 import { PACK_RENDER } from "../content/localArt";
 import { useHideTabBarOnScroll, useTabBarClearance } from "../navigation/tabBarVisibility";
-import { fonts, ink, typography } from "../theme/tokens";
+import { colors, fonts, ink, typography } from "../theme/tokens";
 import { brand, shelf as shelfCopy, packTile as packTileCopy } from "../content/copy";
 import type { RootTabParamList } from "../navigation/RootTabs";
 import type { HomeStackParamList } from "../navigation/HomeStack";
@@ -58,6 +59,7 @@ export function ShelfScreen() {
   const { category } = useRoute<RouteProp<HomeStackParamList, "World">>().params;
   const session = useSessionViewModel();
   const shelf = useShelfViewModel(category);
+  const { isRefreshing, refresh } = useManualRefresh(shelf.refetch);
   const { byId: categoriesById } = useCategoriesViewModel();
   const requireAuth = useAuthStore((s) => s.requireAuth);
   const scrollHandler = useHideTabBarOnScroll();
@@ -131,6 +133,7 @@ export function ShelfScreen() {
       <Animated.ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.list, { paddingBottom: tabBarClearance }]}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}

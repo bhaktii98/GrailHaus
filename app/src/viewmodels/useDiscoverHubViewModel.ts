@@ -48,8 +48,13 @@ export function useDiscoverHubViewModel() {
     [categories, ...packsResults.map((r) => r.data), ...listingsResults.map((r) => r.data)]
   );
 
+  async function refetch() {
+    await Promise.all([...packsResults.map((r) => r.refetch()), ...listingsResults.map((r) => r.refetch())]);
+  }
+
   return {
     isLoading: packsResults.some((r) => r.isLoading),
     byCategory,
+    refetch,
   };
 }

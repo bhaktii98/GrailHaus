@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Defs, RadialGradient, Stop, Rect } from "react-native-svg";
 import { useAuthViewModel, type AuthStep } from "../viewmodels/useAuthViewModel";
 import { GlossyButton } from "../components/GlossyButton";
 import { ScreenBackground } from "../components/ScreenBackground";
 import { AuthGem } from "../components/AuthGem";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { accent, colors, radii, spacing, typography } from "../theme/tokens";
 import { auth as authCopy } from "../content/copy";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -190,10 +191,31 @@ export function AuthScreen({ onClose, initialStep }: { onClose?: () => void; ini
 
         {auth.step === "welcome-back" && (
           <View style={styles.centerFill}>
-            <AuthGem />
+            <View style={styles.bloom} pointerEvents="none">
+              <Svg width={360} height={360}>
+                <Defs>
+                  <RadialGradient id="wbBloom" cx="50%" cy="50%" r="50%">
+                    <Stop offset="0" stopColor={accent.cards.c1} stopOpacity="0.34" />
+                    <Stop offset="0.5" stopColor={accent.cards.c2} stopOpacity="0.16" />
+                    <Stop offset="1" stopColor={accent.cards.c2} stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Rect width={360} height={360} fill="url(#wbBloom)" />
+              </Svg>
+            </View>
+
+            <View style={styles.successBadge}>
+              <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+              <Text style={styles.successBadgeText}>{authCopy.welcomeBackEyebrow}</Text>
+            </View>
+
+            <AuthGem size={156} />
             <Text style={styles.wordmark}>{authCopy.welcomeBackTitle(auth.claimedUsername ?? "")}</Text>
             <Text style={styles.tagline}>{authCopy.welcomeBackBody}</Text>
-            <GlossyButton label={authCopy.enterGrailhaus} onPress={auth.finish} variant="violet" />
+
+            <View style={styles.welcomeActions}>
+              <GlossyButton label={authCopy.enterGrailhaus} onPress={auth.finish} variant="violet" />
+            </View>
           </View>
         )}
       </View>
@@ -247,6 +269,26 @@ const styles = StyleSheet.create({
   wordmark: { color: colors.textPrimary, ...typography.display, fontSize: 34, marginTop: spacing.lg, textAlign: "center" },
   tagline: { color: colors.textSecondary, ...typography.body, textAlign: "center", marginBottom: spacing.lg },
   welcomeActions: { width: "100%", gap: spacing.lg, marginTop: spacing.md },
+
+  bloom: { position: "absolute", alignSelf: "center" },
+  successBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(99,232,92,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(99,232,92,0.32)",
+    marginBottom: spacing.sm,
+  },
+  successBadgeText: {
+    color: colors.success,
+    ...typography.caption,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
 
   title: { color: colors.textPrimary, ...typography.display, marginBottom: spacing.xs },
   subtitle: { color: colors.textSecondary, ...typography.body, marginBottom: spacing.xl },

@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import type { PackSku, PulledOwnedItem } from "@grailhaus/shared";
 import { usePackFlowStore } from "../../state/packFlowStore";
+import { usePackFlowViewModel } from "../../viewmodels/usePackFlowViewModel";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
 import { ProcessingView, ReadyView, SummaryView, type BatchContext } from "./CardFlowEngine";
 import { BlackLabelTearStage } from "./blackLabelReveal/BlackLabelTearStage";
 import { BlackLabelFanReveal } from "./blackLabelReveal/BlackLabelFanReveal";
+import { playSfx } from "../../lib/sfx";
 
 type Step = "processing" | "ready" | "tear" | "cards" | "summary";
 
@@ -46,8 +48,17 @@ export function BlackLabelFlowEngine({
   isRipAgainWorking: boolean;
 }) {
   const setPhase = usePackFlowStore((s) => s.setPhase);
+  // See CardFlowEngine's own comment on both these flags (state/packFlowStore.ts) — true/non-null
+  // only for a flow reconstructed from disk after a process death, never a fresh purchase. (This
+  // engine previously read neither and always started at "processing" regardless of a resume —
+  // fixed here alongside adding partial-progress support, not left half-resumable.)
+  const resumedToSummary = usePackFlowStore((s) => s.resumedToSummary);
+  const resumedOpenedCount = usePackFlowStore((s) => s.resumedOpenedCount);
+  const { recordCardOpened } = usePackFlowViewModel();
   const { owned } = useCollectionViewModel();
-  const [step, setStep] = useState<Step>("processing");
+  const [step, setStep] = useState<Step>(
+    resumedOpenedCount != null ? "cards" : resumedToSummary ? "summary" : "processing"
+  );
   const [visibleStatusRows, setVisibleStatusRows] = useState(0);
 
   // Same commons-first ordering as CardFlowEngine.orderedItems.
@@ -86,6 +97,7 @@ export function BlackLabelFlowEngine({
   }
 
   function handleTearComplete() {
+    playSfx("packTear");
     // Bulk purchase: same fix as CardFlowEngine's own handleTearComplete — one tear stands for
     // the whole batch (every pack's contents already exist regardless of how many get watched),
     // so it hands straight off to the terminal batch summary instead of this pack's own 5-card
@@ -130,7 +142,15 @@ export function BlackLabelFlowEngine({
   }
 
   if (step === "cards") {
-    return <BlackLabelFanReveal items={orderedItems} sku={sku} onDone={handleCardsDone} />;
+    return (
+      <BlackLabelFanReveal
+        items={orderedItems}
+        sku={sku}
+        initialOpenedCount={resumedOpenedCount ?? undefined}
+        onProgress={recordCardOpened}
+        onDone={handleCardsDone}
+      />
+    );
   }
 
   // "summary"

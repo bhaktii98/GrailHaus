@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { computePriceDrift } from "@grailhaus/shared";
 import type { OwnedItem, RarityTierLevel } from "@grailhaus/shared";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
+import { useManualRefresh } from "../../hooks/useManualRefresh";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
 import { useTabBarClearance } from "../../navigation/tabBarVisibility";
 import { CardFace } from "../../components/CardFace";
@@ -39,6 +40,7 @@ export function BinderScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const cellWidth = (windowWidth - 20 * 2 - 9 * 2) / 3;
   const vm = useCollectionViewModel();
+  const { isRefreshing, refresh } = useManualRefresh(vm.refetch);
   // Admin-configurable (rarity_tiers table), not a hardcoded name map — see useRarityTiers.ts.
   const rarityTiers = useRarityTiers("cards");
   const [facet, setFacet] = useState<Facet>("collection");
@@ -122,6 +124,7 @@ export function BinderScreen() {
         numColumns={3}
         contentContainerStyle={[styles.grid, { paddingBottom: tabBarClearance }]}
         columnWrapperStyle={styles.gridRow}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
         ListEmptyComponent={<Text style={styles.empty}>{copy.empty}</Text>}
         renderItem={({ item: owned }: { item: OwnedItem }) => (
           <BinderCell

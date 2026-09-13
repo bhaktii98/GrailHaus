@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Dimensions, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useSharedValue, withRepeat, withTiming, Easing, useAnimatedStyle } from "react-native-reanimated";
 import Svg, { Defs, RadialGradient, Stop, Rect, Polygon } from "react-native-svg";
@@ -45,7 +45,25 @@ const SPECKS: Speck[] = [
   { x: 0.66, y: 0.94, s: 4, op: 0.4, dur: 4200, delay: 1400 },
 ];
 
+// How long the launch beat sits before moving on by itself — long enough for the drift/breathe
+// animation to read, short enough that it doesn't feel like a stall for someone who isn't going
+// to tap anyway.
+const AUTO_START_DELAY_MS = 2600;
+
 export function TitleScreen({ onStart }: { onStart: () => void }) {
+  // Stashed in a ref, not read directly in the effect below: App.tsx passes this as a fresh
+  // inline closure on every render, and it can re-render during this window (fonts/auth
+  // resolving) — depending on `onStart` directly would restart the countdown from zero each
+  // time instead of firing once, mount-to-mount.
+  const onStartRef = useRef(onStart);
+  onStartRef.current = onStart;
+
+  useEffect(() => {
+    const id = setTimeout(() => onStartRef.current(), AUTO_START_DELAY_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <Screen glow="58,20,112" intensity={0.5}>
       <RayBurst size={W * 2.6} tint={["#C878FF", "#FFC45A"]} spin={90} count={22} />
@@ -73,7 +91,6 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
       <View style={styles.head}>
         <View>
           <Text style={styles.meta}>{splash.version}</Text>
-          <Text style={styles.meta}>{splash.supportIdLabel} 7fq2Ka9Rn4</Text>
         </View>
         <Pressable style={styles.menu} hitSlop={8}>
           <View style={styles.menuLine} />
@@ -93,10 +110,6 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
           <Text style={styles.plateText}>{brand.tagline}</Text>
         </View>
       </Pressable>
-
-      <Pulse>
-        <Text style={styles.start}>{splash.tapToStart}</Text>
-      </Pulse>
 
       <View style={styles.foot}>
         <View style={styles.footMark}>
@@ -169,15 +182,6 @@ function Breathe({ children }: { children: ReactNode }) {
   return <Animated.View style={style}>{children}</Animated.View>;
 }
 
-function Pulse({ children }: { children: ReactNode }) {
-  const o = useSharedValue(0.45);
-  useEffect(() => {
-    o.value = withRepeat(withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }), -1, true);
-  }, [o]);
-  const style = useAnimatedStyle(() => ({ opacity: o.value }));
-  return <Animated.View style={[styles.startWrap, style]}>{children}</Animated.View>;
-}
-
 const styles = StyleSheet.create({
   bloom: { position: "absolute", left: W / 2 - 260, top: H * 0.46 - 260 },
   drifter: { position: "absolute" },
@@ -237,12 +241,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,240,200,0.7)",
   },
   plateText: typography.plateLabel,
-  startWrap: { alignItems: "center", paddingBottom: 20 },
-  start: {
-    ...typography.pulseCta,
-    textShadowColor: "rgba(255,214,140,0.7)",
-    textShadowRadius: 24,
-  },
   foot: { paddingHorizontal: 22, paddingBottom: 26, flexDirection: "row", alignItems: "center", gap: 12 },
   footMark: {
     width: 40,

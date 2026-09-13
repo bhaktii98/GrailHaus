@@ -216,15 +216,38 @@ export interface PackSku {
   rarityTiers: RarityTier[];
   itemsByTier: Record<RarityTierLevel, PackItem[]>;
   /** Null = evergreen (always available, restocks over time — see `maxStock`). Non-null = a
-   * timed drop (PRD §19-20): not purchasable before this instant, finite, never restocks. */
+   * timed drop (PRD §19-20): not purchasable before this instant. A one-off drop never
+   * restocks once its stock runs out; a *recurring* drop (see `recurrenceWeekdays` below)
+   * restocks back to `maxStock` at the start of each new occurrence. For a recurring drop,
+   * this is always the current-or-next occurrence's start, computed server-side — never a
+   * fixed date the way a one-off drop's is. */
   goesLiveAt: string | null;
-  /** Optional hard cutoff for a drop; evergreen packs never set this. */
+  /** Optional hard cutoff for a drop; evergreen packs never set this. For a recurring drop,
+   * this is the current-or-next occurrence's own end (goesLiveAt + recurrenceDurationMinutes),
+   * recomputed on every read. */
   endsAt: string | null;
   /** Null = unlimited (not used today — every pack is either evergreen-with-restock or a
-   * non-restocking drop, both finite); otherwise how many are left right now. */
+   * finite drop); otherwise how many are left right now (right now's occurrence, for a
+   * recurring drop). */
   stockRemaining: number | null;
-  /** The ceiling evergreen stock restocks up to, or a drop's one-time starting inventory. */
+  /** The ceiling evergreen stock restocks up to, a one-off drop's starting inventory, or a
+   * recurring drop's per-occurrence starting inventory. */
   maxStock: number | null;
+  /** Which UTC weekdays (0=Sunday..6=Saturday) a recurring drop goes live on. Null/empty = not
+   * a recurring drop — `goesLiveAt`/`endsAt` are then the plain one-off (or evergreen) values
+   * above, set directly by an admin rather than computed. Configured from the admin dashboard;
+   * the actual occurrence timing is always computed server-side (see `phase` below) — the app
+   * never derives this from the raw recurrence rule itself. */
+  recurrenceWeekdays: number[] | null;
+  /** "HH:MM" (UTC) each occurrence starts at. Set together with `recurrenceWeekdays`. */
+  recurrenceTimeUtc: string | null;
+  /** How long each occurrence stays live once it starts. Set together with `recurrenceWeekdays`. */
+  recurrenceDurationMinutes: number | null;
+  /** Server-computed — "soon" (before goesLiveAt), "live" (purchasable now), or "closed" (past
+   * endsAt, or sold out). Only meaningful when `goesLiveAt` is non-null (an evergreen pack is
+   * always "live"). Computed here, not on-device, so every client shows the exact same phase
+   * off the same server clock regardless of the device's own clock/timezone. */
+  phase: "soon" | "live" | "closed";
 }
 
 /** An item as it comes out of a rip — same shape as PackItem, kept distinct so the reveal engine's

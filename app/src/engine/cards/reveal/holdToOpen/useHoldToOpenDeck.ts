@@ -14,6 +14,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useSharedValue, type SharedValue } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import { playSfx } from "../../../../lib/sfx";
 import type { CardRarity } from "../../vaultReveal/config/types";
 
 export type CardOpenStatus = "sealed" | "open" | "pulled";
@@ -48,6 +49,11 @@ export interface HoldToOpenDeck {
    * nothing is open. */
   activeTuning: RarityTuning | null;
   revealedCount: number;
+  /** Cards fully dock'd (status "pulled") — a strict subset of `revealedCount`, which also
+   * counts the one currently "open" (mid-inspection, not yet set aside). This is the number
+   * that's actually safe to persist as "resume from here": a card still "open" when the process
+   * dies should be shown fresh again on resume, not skipped as if it had been dealt with. */
+  pulledCount: number;
   total: number;
   done: boolean;
   grab: (i: number) => void;
@@ -57,9 +63,20 @@ export interface HoldToOpenDeck {
   revealAll: () => void;
 }
 
-export function useHoldToOpenDeck(rarities: CardRarity[], autoAdvance = false): HoldToOpenDeck {
+export function useHoldToOpenDeck(
+  rarities: CardRarity[],
+  autoAdvance = false,
+  /** Seeds the first N cards straight to "pulled" instead of every card starting "sealed" — how
+   * a resumed pack lands on card N+1 (already-grabbable, per `topSealedIndex`) instead of card 1,
+   * with cards 0..N-1 shown already-settled rather than replaying flips the user already saw. 0
+   * (the default) is the normal fresh-pack case: every card starts sealed, unchanged from before
+   * this param existed. */
+  initialOpenedCount = 0
+): HoldToOpenDeck {
   const total = rarities.length;
-  const [status, setStatus] = useState<CardOpenStatus[]>(() => rarities.map(() => "sealed"));
+  const [status, setStatus] = useState<CardOpenStatus[]>(() =>
+    rarities.map((_, i) => (i < initialOpenedCount ? "pulled" : "sealed"))
+  );
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const liftSV = useSharedValue(0);
@@ -111,6 +128,11 @@ export function useHoldToOpenDeck(rarities: CardRarity[], autoAdvance = false): 
             ? Haptics.NotificationFeedbackType.Warning
             : Haptics.NotificationFeedbackType.Success;
       Haptics.notificationAsync(feedback);
+      // Cut off at roughly the flip's own on-screen duration (HoldToOpenFanReveal.tsx's
+      // FLIP_CONFIG: 5 × 100ms turns + a 320ms settle ≈ 820ms) — the source clip runs several
+      // seconds longer than that, and letting it play out in full reads as "still going after
+      // the flip finished" instead of "playing while it flips."
+      playSfx("cardOpen", 850);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [openIndex, topSealedIndex, rarities, autoAdvance]
@@ -134,12 +156,13 @@ export function useHoldToOpenDeck(rarities: CardRarity[], autoAdvance = false): 
 
   const activeTuning = openIndex != null ? tuning[openIndex] : null;
   const revealedCount = status.filter((s) => s !== "sealed").length;
+  const pulledCount = status.filter((s) => s === "pulled").length;
   const done = revealedCount === total && openIndex == null;
 
   return {
     status, openIndex, isGrabbable,
     liftSV,
-    activeTuning, revealedCount, total, done,
+    activeTuning, revealedCount, pulledCount, total, done,
     grab, dock, revealAll,
   };
 }

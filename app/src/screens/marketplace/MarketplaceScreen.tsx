@@ -4,6 +4,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +18,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Category, Listing, RarityTierLevel } from "@grailhaus/shared";
 import { useSessionViewModel } from "../../viewmodels/useSessionViewModel";
 import { useMarketplaceViewModel } from "../../viewmodels/useMarketplaceViewModel";
+import { useManualRefresh } from "../../hooks/useManualRefresh";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
 import { useTabBarClearance } from "../../navigation/tabBarVisibility";
 import { SignInPrompt } from "../../components/SignInPrompt";
@@ -87,6 +89,7 @@ export function MarketplaceScreen() {
   }, [routeInitialTab]);
   const [category, setCategory] = useState<Category | null>(null);
   const vm = useMarketplaceViewModel(category ?? undefined);
+  const { isRefreshing, refresh } = useManualRefresh(vm.refetch);
   const tabBarClearance = useTabBarClearance();
 
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
@@ -254,6 +257,7 @@ export function MarketplaceScreen() {
           numColumns={2}
           contentContainerStyle={[styles.grid, { paddingBottom: tabBarClearance }]}
           columnWrapperStyle={styles.gridRow}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
           ListEmptyComponent={
             <Text style={styles.empty}>
               {tab === "mine"

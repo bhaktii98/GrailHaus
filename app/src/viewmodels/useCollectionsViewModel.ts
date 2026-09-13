@@ -20,7 +20,7 @@ export interface CatalogCollectionGroup {
  * already fetched by `/items`.
  */
 export function useCollectionsViewModel() {
-  const { isLoading, allItems } = useDiscoverAllCategoriesViewModel();
+  const { isLoading, allItems, refetch } = useDiscoverAllCategoriesViewModel();
 
   const groups = useMemo<CatalogCollectionGroup[]>(() => {
     const map = new Map<string, DiscoverItem[]>();
@@ -45,5 +45,6 @@ export function useCollectionsViewModel() {
     isLoading,
     groups,
     totalItemCount: allItems.length,
+    refetch,
   };
 }

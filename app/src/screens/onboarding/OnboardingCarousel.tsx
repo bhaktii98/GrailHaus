@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import Animated, {
@@ -53,6 +54,7 @@ const SWIPE_VELOCITY_THRESHOLD = 500;
  * forward/back; each page's content also now fades in/out on change instead
  * of hard-cutting. */
 export function OnboardingCarousel({ onFinish }: { onFinish: () => void }) {
+  const insets = useSafeAreaInsets();
   const [i, setI] = useState(0);
   const p = PAGES[i];
   const last = i === PAGES.length - 1;
@@ -102,40 +104,51 @@ export function OnboardingCarousel({ onFinish }: { onFinish: () => void }) {
             ) : null}
           </View>
 
-          <View style={styles.hero}>
-            <Tilted tilt={p.tilt} key={i}>
-              <PackFace art={p.art} width={178} height={246} radius={20} crimp>
-                <View style={styles.packMark}>
-                  <Image
-                    source={require("../../../assets/icon.png")}
-                    style={{ width: 62, height: 62, borderRadius: 13, opacity: 0.9 }}
-                  />
-                </View>
-              </PackFace>
-            </Tilted>
-          </View>
-
-          <Animated.View key={i} entering={FadeIn.duration(220)} exiting={FadeOut.duration(120)} style={styles.body}>
-            <Text style={styles.eyebrow}>{p.eyebrow}</Text>
-            <Text style={styles.title}>{p.title}</Text>
-            <Text style={styles.para}>{p.body}</Text>
-
-            <View style={[styles.rule, { backgroundColor: `rgba(${p.acc.glow},0.5)` }]} />
-
-            <View style={{ gap: 12 }}>
-              {p.beats.map(([k, t, d]) => (
-                <View key={t} style={styles.beat}>
-                  <View style={[styles.key, { backgroundColor: `rgba(${p.acc.glow},0.18)` }]}>
-                    <Text style={[styles.keyText, { color: p.acc.c1 }]}>{k}</Text>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.hero}>
+              <Tilted tilt={p.tilt} key={i}>
+                <PackFace art={p.art} width={178} height={246} radius={20} crimp>
+                  <View style={styles.packMark}>
+                    <Image
+                      source={require("../../../assets/icon.png")}
+                      style={{ width: 62, height: 62, borderRadius: 13, opacity: 0.9 }}
+                    />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.beatTitle}>{t}</Text>
-                    <Text style={styles.beatBody}>{d}</Text>
-                  </View>
-                </View>
-              ))}
+                </PackFace>
+              </Tilted>
             </View>
 
+            <Animated.View key={i} entering={FadeIn.duration(220)} exiting={FadeOut.duration(120)} style={styles.body}>
+              <Text style={styles.eyebrow}>{p.eyebrow}</Text>
+              <Text style={styles.title}>{p.title}</Text>
+              <Text style={styles.para}>{p.body}</Text>
+
+              <View style={[styles.rule, { backgroundColor: `rgba(${p.acc.glow},0.5)` }]} />
+
+              <View style={{ gap: 12 }}>
+                {p.beats.map(([k, t, d]) => (
+                  <View key={t} style={styles.beat}>
+                    <View style={[styles.key, { backgroundColor: `rgba(${p.acc.glow},0.18)` }]}>
+                      <Text style={[styles.keyText, { color: p.acc.c1 }]}>{k}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.beatTitle}>{t}</Text>
+                      <Text style={styles.beatBody}>{d}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </Animated.View>
+          </ScrollView>
+
+          {/* Pinned below the scrollable content (rather than at the end of it) so it's always
+              reachable on a short device — a tall page's beats/body scroll under it instead of
+              pushing it, and shrinking, off the bottom of the screen. */}
+          <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
             <View style={styles.dotRow}>
               <Dots count={PAGES.length} index={i} onPick={setI} />
             </View>
@@ -146,7 +159,7 @@ export function OnboardingCarousel({ onFinish }: { onFinish: () => void }) {
               onPress={next}
               style={{ marginTop: 16 }}
             />
-          </Animated.View>
+          </View>
         </Screen>
       </View>
     </GestureDetector>
@@ -195,9 +208,11 @@ const styles = StyleSheet.create({
   brand: { flexDirection: "row", alignItems: "center", gap: 9 },
   logo: { width: 28, height: 28, borderRadius: 8 },
   brandText: { ...typography.navBrand, fontSize: 15, letterSpacing: 0.3 },
-  hero: { flex: 1, minHeight: 250, alignItems: "center", justifyContent: "center" },
+  scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
+  hero: { minHeight: 230, alignItems: "center", justifyContent: "center" },
   packMark: { position: "absolute", left: 58, top: 88 },
-  body: { paddingHorizontal: 26, paddingBottom: 34 },
+  body: { paddingHorizontal: 26 },
   eyebrow: typography.eyebrow,
   title: { ...typography.carouselTitle, marginTop: 11 },
   para: { ...typography.paragraph, marginTop: 11 },
@@ -207,8 +222,8 @@ const styles = StyleSheet.create({
   keyText: typography.beatKey,
   beatTitle: typography.beatTitle,
   beatBody: { ...typography.beatBody, marginTop: 2 },
+  footer: { paddingHorizontal: 26, paddingTop: 6 },
   dotRow: {
-    marginTop: 24,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

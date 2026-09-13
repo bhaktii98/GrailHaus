@@ -17,15 +17,15 @@ import {
 import { AppNavigator } from "./src/navigation/AppNavigator";
 import { navigationRef, navigateToReveal } from "./src/navigation/navigationRef";
 import { TitleScreen } from "./src/screens/TitleScreen";
-import { OnboardingScreen } from "./src/screens/onboarding/OnboardingScreen";
+import { OnboardingCarousel } from "./src/screens/onboarding/OnboardingCarousel";
 import { queryClient } from "./src/state/queryClient";
 import { useOnboardingStore } from "./src/state/onboardingStore";
 import { useAuthStore } from "./src/state/authStore";
 import { AuthProvider } from "./src/providers/AuthProvider";
 import { ShaderWarmup } from "./src/engine/core/ShaderWarmup";
 import { colors } from "./src/theme/tokens";
-import { getOnboardingComplete, setOnboardingComplete } from "./src/lib/onboarding";
 import { usePackFlowStore } from "./src/state/packFlowStore";
+import { initSfx } from "./src/lib/sfx";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -63,10 +63,15 @@ export default function App() {
   const authReady = useAuthStore((s) => s.isReady);
 
   useEffect(() => {
-    // Always show onboarding in dev builds — otherwise the persisted "seen it"
-    // flag makes it disappear after the first run, which fights iterating on it.
-    getOnboardingComplete().then((done) => setNeedsOnboarding(__DEV__ ? true : !done));
+    // Onboarding is gated purely on sign-in state (see `showOnboarding` below), not on any
+    // device-persisted "seen it" flag — a signed-out user should see it every time they open
+    // the app, not just once ever, so this always starts true rather than reading from disk.
+    setNeedsOnboarding(true);
   }, [setNeedsOnboarding]);
+
+  useEffect(() => {
+    initSfx();
+  }, []);
 
   const isReady = fontsLoaded && needsOnboardingFlag !== null && authReady;
 
@@ -79,8 +84,8 @@ export default function App() {
   }, [onLayout]);
 
   // A restored session token means this is a returning, already-known user — send them
-  // straight to Home regardless of this device's own "seen the carousel" flag (and regardless
-  // of the dev override above). Onboarding is only ever for someone who isn't signed in yet.
+  // straight to Home. Onboarding is only ever for someone who isn't signed in yet, and shows
+  // again every time they open the app in that state (see the effect above).
   const showOnboarding = !token && needsOnboardingFlag;
 
   return (
@@ -97,12 +102,7 @@ export default function App() {
             {!isReady ? null : !started ? (
               <TitleScreen onStart={() => setStarted(true)} />
             ) : showOnboarding ? (
-              <OnboardingScreen
-                onDone={() => {
-                  setOnboardingComplete();
-                  setNeedsOnboarding(false);
-                }}
-              />
+              <OnboardingCarousel onFinish={() => setNeedsOnboarding(false)} />
             ) : (
               <NavigationContainer
                 ref={navigationRef}
@@ -111,10 +111,14 @@ export default function App() {
                   // Covers the race where AuthProvider's boot-time reveal resume (see
                   // providers/AuthProvider.tsx) finishes and populates packFlowStore *before*
                   // this container exists to navigate on — `navigateToReveal` there was a no-op
-                  // in that case. `resumedToSummary` is only ever true for a disk-restored flow
-                  // (see state/packFlowStore.ts), never a normal fresh purchase, so this can't
-                  // accidentally hijack a purchase that's genuinely starting fresh right now.
-                  if (usePackFlowStore.getState().resumedToSummary) navigateToReveal();
+                  // in that case. `resumedToSummary`/`resumedOpenedCount` are only ever
+                  // set for a disk-restored flow (see state/packFlowStore.ts), never a normal
+                  // fresh purchase, so this can't accidentally hijack a purchase that's genuinely
+                  // starting fresh right now. Checking both (not just `resumedToSummary`) is what
+                  // makes a partial-progress resume (lands on card 3 of 5, not the pack's summary)
+                  // actually navigate here too, instead of silently resuming state nobody sees.
+                  const state = usePackFlowStore.getState();
+                  if (state.resumedToSummary || state.resumedOpenedCount != null) navigateToReveal();
                 }}
               >
                 <AppNavigator />

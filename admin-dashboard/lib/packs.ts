@@ -78,6 +78,13 @@ export async function listPacksWithEv(): Promise<PackWithEv[]> {
       endsAt: pack.ends_at,
       stockRemaining: pack.stock_remaining,
       maxStock: pack.max_stock,
+      // This overview list is EV-only (see `evCents` below) — it never displays drop timing, so
+      // recurrence/phase are just placeholders satisfying the shared PackSku shape, not real
+      // values a caller should read.
+      recurrenceWeekdays: null,
+      recurrenceTimeUtc: null,
+      recurrenceDurationMinutes: null,
+      phase: "live",
     };
 
     return { ...packSku, evCents: evByPack.get(pack.id) ?? 0 };

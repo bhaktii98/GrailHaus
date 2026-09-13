@@ -90,6 +90,7 @@ export function useCollectionViewModel() {
     byCategory,
     collections,
     brands,
+    refetch: () => query.refetch(),
   };
 }
 

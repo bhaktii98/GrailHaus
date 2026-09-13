@@ -26,15 +26,41 @@ export async function updatePack(packId: string, formData: FormData) {
   const goesLiveAt = isoOrNull(formData, "goesLiveAt");
   const endsAt = isoOrNull(formData, "endsAt");
 
+  // A recurring drop needs all three set together (see packs.service.ts's server-side
+  // resolveDropWindow, which requires the same) — if the duration or time was cleared, the
+  // weekday checkboxes are ignored too rather than saving a half-configured schedule that would
+  // silently behave as "not recurring."
+  const recurrenceWeekdaysRaw = [0, 1, 2, 3, 4, 5, 6].filter((day) => formData.get(`recurrenceDay_${day}`) === "on");
+  const recurrenceTimeUtcRaw = formData.get("recurrenceTimeUtc");
+  const recurrenceTimeUtc = recurrenceTimeUtcRaw && recurrenceTimeUtcRaw !== "" ? String(recurrenceTimeUtcRaw) : null;
+  const recurrenceDurationMinutes = numberOrNull(formData, "recurrenceDurationMinutes");
+  const recurrenceEnabled = recurrenceWeekdaysRaw.length > 0 && recurrenceTimeUtc != null && recurrenceDurationMinutes != null;
+  const recurrenceWeekdays = recurrenceEnabled ? recurrenceWeekdaysRaw : null;
+
   const client = await pool.connect();
   try {
     await client.query("begin");
     await client.query(
       `update public.packs
        set price_cents = $1, item_count = $2, stock_remaining = $3, max_stock = $4,
-           restock_amount = $5, restock_interval_seconds = $6, goes_live_at = $7, ends_at = $8
-       where id = $9`,
-      [priceCents, itemCount, stockRemaining, maxStock, restockAmount, restockIntervalSeconds, goesLiveAt, endsAt, packId]
+           restock_amount = $5, restock_interval_seconds = $6, goes_live_at = $7, ends_at = $8,
+           recurrence_weekdays = $9, recurrence_time_utc = $10, recurrence_duration_minutes = $11,
+           recurrence_last_reset_at = null
+       where id = $12`,
+      [
+        priceCents,
+        itemCount,
+        stockRemaining,
+        maxStock,
+        restockAmount,
+        restockIntervalSeconds,
+        goesLiveAt,
+        endsAt,
+        recurrenceWeekdays,
+        recurrenceEnabled ? recurrenceTimeUtc : null,
+        recurrenceEnabled ? recurrenceDurationMinutes : null,
+        packId,
+      ]
     );
 
     for (const [key, value] of formData.entries()) {
@@ -277,31 +303,75 @@ export async function upsertCategory(formData: FormData) {
   redirect(`/categories/${id}`);
 }
 
-/** Deletes a category outright. Guarded the same way deleteItem is — blocked if anything still
- * references it (packs, rarity tiers, marketplace fees, ownership weights), with a friendly
- * message instead of letting the categories_*_fkey constraints surface as a raw SQL error.
- * Remove those first (or just leave the category — nothing forces a category to stay "active"). */
+/** Deletes a category, auto-cleaning whatever safely can be: rarity tiers, marketplace fees,
+ * and ownership weights are config rows nothing else references, so those always go; packs are
+ * only auto-deleted if they have zero owned items and zero purchases (their own items/pressure
+ * rules/slot probabilities cascade with them at the DB level). A pack with real owned items or
+ * purchase history — an actual pull sitting in someone's portfolio, or a real transaction record
+ * — is never auto-removed; the category delete is blocked until those are dealt with some other
+ * way, with the specific blocking packs named instead of a generic "still referenced" message. */
 export async function deleteCategory(formData: FormData) {
   const id = String(formData.get("id"));
-  const [packs, rarity, fees, weights] = await Promise.all([
-    pool.query<{ count: string }>("select count(*)::text as count from public.packs where category = $1", [id]),
-    pool.query<{ count: string }>("select count(*)::text as count from public.rarity_tiers where category = $1", [id]),
-    pool.query<{ count: string }>(
-      "select count(*)::text as count from public.marketplace_fee_tiers where category = $1",
-      [id]
-    ),
-    pool.query<{ count: string }>(
-      "select count(*)::text as count from public.ownership_weight_tiers where category = $1",
-      [id]
-    ),
-  ]);
-  const totalRefs = [packs, rarity, fees, weights].reduce((sum, r) => sum + Number(r.rows[0].count), 0);
-  if (totalRefs > 0) {
+
+  const packs = await pool.query<{ id: string; name: string }>(
+    "select id, name from public.packs where category = $1",
+    [id]
+  );
+  const packIds = packs.rows.map((r) => r.id);
+
+  const blockedPacks: { name: string; ownedCount: number; purchaseCount: number }[] = [];
+  const deletablePackIds: string[] = [];
+
+  if (packIds.length > 0) {
+    const [ownedCounts, purchaseCounts] = await Promise.all([
+      pool.query<{ pack_id: string; count: string }>(
+        "select pack_id, count(*)::text as count from public.owned_items where pack_id = any($1) group by pack_id",
+        [packIds]
+      ),
+      pool.query<{ pack_id: string; count: string }>(
+        "select pack_id, count(*)::text as count from public.purchases where pack_id = any($1) group by pack_id",
+        [packIds]
+      ),
+    ]);
+    const ownedByPack = new Map(ownedCounts.rows.map((r) => [r.pack_id, Number(r.count)]));
+    const purchasesByPack = new Map(purchaseCounts.rows.map((r) => [r.pack_id, Number(r.count)]));
+
+    for (const pack of packs.rows) {
+      const ownedCount = ownedByPack.get(pack.id) ?? 0;
+      const purchaseCount = purchasesByPack.get(pack.id) ?? 0;
+      if (ownedCount > 0 || purchaseCount > 0) {
+        blockedPacks.push({ name: pack.name, ownedCount, purchaseCount });
+      } else {
+        deletablePackIds.push(pack.id);
+      }
+    }
+  }
+
+  if (blockedPacks.length > 0) {
+    const detail = blockedPacks.map((p) => `"${p.name}" (${p.ownedCount} owned, ${p.purchaseCount} purchased)`).join(", ");
     throw new Error(
-      "Can't delete — this category still has packs, rarity tiers, fees, or ownership weights referencing it. Remove those first."
+      `Can't delete — ${blockedPacks.length} pack${blockedPacks.length > 1 ? "s" : ""} still ${blockedPacks.length > 1 ? "have" : "has"} real owned items or purchase history and can't be auto-removed: ${detail}. Deal with those first.`
     );
   }
-  await pool.query("delete from public.categories where id = $1", [id]);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    if (deletablePackIds.length > 0) {
+      await client.query("delete from public.packs where id = any($1)", [deletablePackIds]);
+    }
+    await client.query("delete from public.rarity_tiers where category = $1", [id]);
+    await client.query("delete from public.marketplace_fee_tiers where category = $1", [id]);
+    await client.query("delete from public.ownership_weight_tiers where category = $1", [id]);
+    await client.query("delete from public.categories where id = $1", [id]);
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback");
+    throw err;
+  } finally {
+    client.release();
+  }
+
   revalidatePath("/categories");
   redirect("/categories");
 }

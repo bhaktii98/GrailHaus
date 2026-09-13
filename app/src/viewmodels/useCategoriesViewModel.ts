@@ -33,5 +33,6 @@ export function useCategoriesViewModel() {
     byId,
     isLoading: query.isLoading,
     error: query.error ? (query.error as Error).message : null,
+    refetch: () => query.refetch(),
   };
 }

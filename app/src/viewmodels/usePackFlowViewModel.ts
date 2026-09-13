@@ -15,6 +15,7 @@ import {
   resumeActiveReveal,
   setActiveReveal,
   setActiveRevealBulkState,
+  setActiveRevealOpenedCount,
   setActiveRevealPackIndex,
 } from "../lib/activeReveal";
 import { retryOnceOnNetworkError } from "../lib/retryOnNetworkError";
@@ -213,17 +214,33 @@ export function usePackFlowViewModel() {
     const outcome = await resumeActiveReveal();
     if (outcome.kind === "resume") {
       // A bulk run resumes into its *own* stage machine (mid-hunt, at the prime grid, wherever it
-      // was), never into a per-pack summary — `resumedToSummary` is a single-pack concept and
-      // would strand a bulk run on the wrong screen entirely.
+      // was), never into a per-pack summary or a per-card landing — both are single-pack concepts
+      // and would strand a bulk run on the wrong screen entirely.
       const isBulk = outcome.packs.length > 1;
+      const packItemCount = outcome.packs[outcome.resumeIndex]?.length ?? 0;
+      // Worth landing on card N+1 only if there's a sealed card left to land on — 0 opened (crash
+      // before the first card) or every card already opened both fall back to the coarser
+      // "lands on the summary" outcome instead (see activeReveal.ts's own comment on this split).
+      const hasPartialProgress = !isBulk && outcome.openedCount > 0 && outcome.openedCount < packItemCount;
       start(outcome.sku, outcome.purchaseId, outcome.packs, {
         resumeAtIndex: outcome.resumeIndex,
-        resumedToSummary: !isBulk,
+        resumedToSummary: !isBulk && !hasPartialProgress,
+        resumedOpenedCount: hasPartialProgress ? outcome.openedCount : null,
         bulkReveal: outcome.bulkReveal ?? null,
       });
       return true;
     }
     return false;
+  }
+
+  /** Fired from the active card flow engine's `onProgress` every time a card is dock'd — persists
+   * immediately (see ActiveReveal.openedCount's own doc comment for why this needs to survive the
+   * very next frame, same reasoning as `revealGrail`). Harmless if this fires during a bulk pack
+   * too (every pack in a batch still runs the same per-card reveal) — `resumeFlow` above only ever
+   * reads `openedCount` back out for a single-pack resume, so a bulk run's own resumeFlow ignores
+   * whatever this wrote. */
+  async function recordCardOpened(openedCount: number) {
+    await setActiveRevealOpenedCount(openedCount);
   }
 
   async function finishFlow() {
@@ -272,6 +289,7 @@ export function usePackFlowViewModel() {
     advanceBulkStage,
     revealGrail,
     resumeFlow,
+    recordCardOpened,
     setPhase,
     finishFlow,
   };

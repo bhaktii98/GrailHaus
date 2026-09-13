@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,6 +6,7 @@ import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useDropsViewModel, type DropPhase, type DropView } from "../viewmodels/useDropsViewModel";
+import { useManualRefresh } from "../hooks/useManualRefresh";
 import { useHideTabBarOnScroll, useTabBarClearance } from "../navigation/tabBarVisibility";
 import { PackFace } from "../components/PackFace";
 import { WatchDial } from "../components/WatchDial";
@@ -32,7 +33,8 @@ const PHASE_CHROME: Record<DropPhase, { eyebrow: string; eyebrowColor: string; d
 export function DropsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { drops, isLoading, error } = useDropsViewModel();
+  const { drops, isLoading, error, refetch } = useDropsViewModel();
+  const { isRefreshing, refresh } = useManualRefresh(refetch);
   const scrollHandler = useHideTabBarOnScroll();
   const tabBarClearance = useTabBarClearance();
 
@@ -55,6 +57,7 @@ export function DropsScreen() {
         data={drops}
         keyExtractor={(d: DropView) => d.sku.id}
         contentContainerStyle={[styles.list, { paddingBottom: tabBarClearance }]}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         renderItem={({ item }: { item: DropView }) => (

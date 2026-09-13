@@ -35,11 +35,24 @@ export const packSkuSchema = {
     itemCount: { type: "number", description: "Slots per pull — 5-7 for cards, 1 for watches" },
     goesLiveAt: {
       type: ["string", "null"],
-      description: "Null = evergreen. Set = a timed drop, not purchasable before this instant.",
+      description:
+        "Null = evergreen. Set = a timed drop, not purchasable before this instant. For a recurring drop (see recurrenceWeekdays), this is the current-or-next occurrence, computed server-side.",
     },
-    endsAt: { type: ["string", "null"], description: "Optional hard cutoff for a drop." },
+    endsAt: { type: ["string", "null"], description: "Optional hard cutoff for a drop, or a recurring drop's current occurrence end." },
     stockRemaining: { type: ["number", "null"] },
-    maxStock: { type: ["number", "null"], description: "Evergreen restock ceiling, or a drop's starting inventory." },
+    maxStock: { type: ["number", "null"], description: "Evergreen restock ceiling, or a drop's (recurring or not) starting inventory." },
+    recurrenceWeekdays: {
+      type: ["array", "null"],
+      items: { type: "number" },
+      description: "0=Sunday..6=Saturday. Null/empty = not a recurring drop.",
+    },
+    recurrenceTimeUtc: { type: ["string", "null"], description: "\"HH:MM\" UTC each occurrence starts at." },
+    recurrenceDurationMinutes: { type: ["number", "null"], description: "How long each occurrence stays live." },
+    phase: {
+      type: "string",
+      enum: ["soon", "live", "closed"],
+      description: "Server-computed — always trust this over deriving phase from goesLiveAt/endsAt on-device.",
+    },
     slotProbabilities: {
       type: "array",
       items: {

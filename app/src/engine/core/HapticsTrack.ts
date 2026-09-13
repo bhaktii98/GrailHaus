@@ -1,11 +1,24 @@
 import * as Haptics from "expo-haptics";
+import { playSfx } from "../../lib/sfx";
 import type { HapticStep } from "./types";
 
 const play: Record<HapticStep["kind"], () => Promise<void> | void> = {
-  light: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
-  medium: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
-  heavy: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy),
-  success: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
+  light: () => {
+    playSfx("light");
+    return Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  },
+  medium: () => {
+    playSfx("medium");
+    return Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  },
+  heavy: () => {
+    playSfx("heavy");
+    return Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  },
+  success: () => {
+    playSfx("success");
+    return Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  },
 };
 
 /** Schedules a sequenced haptic track (not a single buzz-on-success). Returns a canceller. */

@@ -15,6 +15,7 @@ import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Svg, { Path } from "react-native-svg";
 import { Canvas, Circle, Image as SkiaImage, RadialGradient, vec, type SkImage } from "@shopify/react-native-skia";
 import Animated, {
   Easing,
@@ -23,6 +24,7 @@ import Animated, {
   useDerivedValue,
   useSharedValue,
   withDelay,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -83,6 +85,105 @@ export interface HoldToOpenPalette {
   accentRGB: string;
   /** VaultVignette's top glow — Vault Break's violet, Black Label's ember, etc. */
   vignetteGlow: string;
+}
+
+// Scattered fixed points (in 0..1 fractions of the card's own width/height) rather than random —
+// deterministic placement reads as "designed," and this is mounted fresh per card (FanCard is
+// keyed by index at its call site) so there's no risk of every GRAIL card looking identical in a
+// way that would matter.
+const SPARKLE_POINTS: { x: number; y: number; size: number; delayMs: number }[] = [
+  { x: 0.12, y: 0.15, size: 22, delayMs: 0 },
+  { x: 0.88, y: 0.2, size: 16, delayMs: 260 },
+  { x: 0.8, y: 0.85, size: 20, delayMs: 520 },
+  { x: 0.16, y: 0.82, size: 14, delayMs: 130 },
+  { x: 0.5, y: 0.05, size: 14, delayMs: 390 },
+  { x: 0.94, y: 0.58, size: 18, delayMs: 650 },
+];
+
+// One twinkling point — a small four-point star (two crossed bars, cheap Reanimated Views, no
+// Skia/blur) that fades in and out on an endless loop rather than firing once (see FinaleSpark
+// for that one-shot-burst pattern instead) — this is meant to keep sparkling for as long as the
+// GRAIL card it's pinned to stays on screen, through the flip and after it settles, not just at
+// the moment it lands.
+function SparklePoint({
+  x,
+  y,
+  size,
+  delayMs,
+  cardW,
+  cardH,
+}: {
+  x: number;
+  y: number;
+  size: number;
+  delayMs: number;
+  cardW: number;
+  cardH: number;
+}) {
+  const twinkle = useSharedValue(0);
+  useEffect(() => {
+    twinkle.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 520, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.15, { duration: 640, easing: Easing.inOut(Easing.quad) })
+        ),
+        -1,
+        false
+      )
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const style = useAnimatedStyle(() => ({
+    opacity: twinkle.value,
+    transform: [{ scale: 0.5 + twinkle.value * 0.8 }, { rotate: `${twinkle.value * 35}deg` }],
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        style,
+        {
+          position: "absolute",
+          left: x * cardW - size / 2,
+          top: y * cardH - size / 2,
+          width: size,
+          height: size,
+        },
+      ]}
+    >
+      {/* Soft glow halo behind the star — without this the shape alone reads as too thin/subtle
+          against busy card art, especially at small sizes. */}
+      <View
+        style={[
+          styles.sparkleGlow,
+          { width: size, height: size, borderRadius: size / 2, backgroundColor: "rgba(255,224,120,0.55)" },
+        ]}
+      />
+      {/* Classic four-point "twinkle" star — a proper sparkle glyph, not a plain cross. */}
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Path
+          d="M12 0 C12.8 6.6, 17.4 11.2, 24 12 C17.4 12.8, 12.8 17.4, 12 24 C11.2 17.4, 6.6 12.8, 0 12 C6.6 11.2, 11.2 6.6, 12 0 Z"
+          fill="#FFFBEA"
+        />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/** Mounted only for a GRAIL card, for as long as `revealed` is true — from the instant the flip
+ * starts through however long the card sits open afterward (see the call site in FanCard below),
+ * so it covers both "while flipping" and "while showing" as one continuous effect rather than
+ * two separate ones. */
+function GrailSparkles({ cardW, cardH }: { cardW: number; cardH: number }) {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {SPARKLE_POINTS.map((p, i) => (
+        <SparklePoint key={i} {...p} cardW={cardW} cardH={cardH} />
+      ))}
+    </View>
+  );
 }
 
 function FanCard({
@@ -261,6 +362,11 @@ function FanCard({
           )}
         </Animated.View>
       </Pressable>
+      {/* Sits inside the same Animated.View as the faces above, so it inherits the card's own
+          pop/scale/translate — the sparkle rides along with the flip rather than sitting still
+          while the card moves under it. Gated on `revealed`, not `isFront`, so it starts the
+          instant the flip begins (not only once it's settled on the face). */}
+      {rarity === "GRAIL" && revealed && <GrailSparkles cardW={cardW} cardH={cardH} />}
     </Animated.View>
   );
 }
@@ -782,6 +888,8 @@ export function HoldToOpenFanReveal({
   palette,
   compressed,
   autoAdvance,
+  initialOpenedCount,
+  onProgress,
   onDone,
 }: {
   items: ItemDetail[];
@@ -808,12 +916,33 @@ export function HoldToOpenFanReveal({
    * and another to move on, preserving agency at the one moment that matters. A tap always still
    * works during auto-advance too — it just pre-empts whichever timer is pending. */
   autoAdvance?: boolean;
+  /** Set only by a resumed single-pack flow (see CardFlowEngine/VaultBreakFlowEngine/
+   * BlackLabelFlowEngine's own `resumedOpenedCount`) — how many cards to seed as already dock'd,
+   * so the deck lands on the next sealed one instead of card 1. Undefined for every normal fresh
+   * pack, same as `compressed`/`autoAdvance`. */
+  initialOpenedCount?: number;
+  /** Fired every time `hold.pulledCount` changes — the caller's job to persist (see
+   * usePackFlowViewModel.recordCardOpened), not this component's; it only reports the number.
+   * Undefined for anything that doesn't care (there's nothing to resume into without it, but a
+   * missing callback is still a safe no-op here, not a crash). */
+  onProgress?: (pulledCount: number) => void;
   onDone: () => void;
 }) {
   const { width, height } = useWindowDimensions();
   const total = deck.length;
   const rarities = useMemo(() => deck.map((c) => c.rarity), [deck]);
-  const hold = useHoldToOpenDeck(rarities, autoAdvance);
+  const hold = useHoldToOpenDeck(rarities, autoAdvance, initialOpenedCount);
+
+  // Reports every change (including the very first, mount-time one, re-asserting whatever
+  // `initialOpenedCount` already was — harmless: it's the same cheap single-field rewrite
+  // `setActiveRevealOpenedCount` already no-ops correctly on). Only ever meaningfully advances
+  // once a card is actually dock'd (`hold.pulledCount` only grows on `dock()`, never on `grab()`),
+  // so a crash mid-flip/mid-inspection still correctly resumes into showing that same card again
+  // rather than skipping it as already-seen.
+  useEffect(() => {
+    onProgress?.(hold.pulledCount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hold.pulledCount]);
 
   const cardW = Math.min(220, width * 0.56);
   const cardH = cardW / cardAspect;
@@ -900,6 +1029,11 @@ export function HoldToOpenFanReveal({
   // velocity-aware so a fast flick completes even short of full travel — same gesture-physics
   // bar the pack tear itself already follows (see GestureLayer.tsx).
   const swipeGesture = Gesture.Pan()
+    // Only live once "Continue"/"swipe up" is actually showing — attached to the whole screen
+    // below (not just the footer), so it must stay inert during the ordinary per-card reveal or
+    // an incidental upward drag while inspecting a card would finish the pack out from under the
+    // user.
+    .enabled(showContinue)
     .activeOffsetY([-14, 14])
     .failOffsetX([-24, 24])
     .onUpdate((event) => {
@@ -937,10 +1071,6 @@ export function HoldToOpenFanReveal({
       ? sku.rarityTiers.find((t) => t.level === items[selectedIndex].rarityTierLevel)?.colorHex ?? palette.accentHex
       : palette.accentHex;
 
-  const totalValueCents = items
-    .filter((_, i) => hold.status[i] === "pulled")
-    .reduce((sum, item) => sum + item.currentValueCents, 0);
-
   // Same action, same copy, for every rarity — tap opens, tap again sets aside. In autoAdvance
   // (bulk-batch), that's still true — a tap still works and still does exactly this — it's just
   // no longer required for CORE/PRIME, which the hint should say plainly rather than keep
@@ -969,6 +1099,11 @@ export function HoldToOpenFanReveal({
 
   return (
     <View style={styles.root}>
+      {/* Wraps the whole screen (not just the footer) so "swipe up to continue" works from
+          anywhere once it's showing — inert everywhere else via the gesture's own `.enabled`
+          (see swipeGesture's definition), so this can't intercept ordinary card taps/inspection
+          during the regular per-card reveal. */}
+      <GestureDetector gesture={swipeGesture}>
       <Animated.View style={[styles.contentWrap, contentFadeStyle]} pointerEvents={leaving ? "none" : "auto"}>
       <VaultVignette
         width={width}
@@ -1063,20 +1198,15 @@ export function HoldToOpenFanReveal({
             ) : null}
           </View>
         ) : (
-          <GestureDetector gesture={swipeGesture}>
-            <Animated.View style={[styles.continueWrap, continueStyle]}>
-              <Text style={styles.totalLabel}>
-                TOTAL VALUE <Text style={styles.totalValue}>${(totalValueCents / 100).toFixed(0)}</Text>
-              </Text>
-              <Pressable
-                style={[styles.continueButton, { borderColor: `rgba(${palette.accentRGB},0.5)`, backgroundColor: `rgba(${palette.accentRGB},0.1)` }]}
-                onPress={beginLeave}
-              >
-                <Text style={styles.continueLabel}>Continue</Text>
-              </Pressable>
-              <Text style={styles.skipHint}>or swipe up</Text>
-            </Animated.View>
-          </GestureDetector>
+          <Animated.View style={[styles.continueWrap, continueStyle]}>
+            <Pressable
+              style={[styles.continueButton, { borderColor: `rgba(${palette.accentRGB},0.5)`, backgroundColor: `rgba(${palette.accentRGB},0.1)` }]}
+              onPress={beginLeave}
+            >
+              <Text style={styles.continueLabel}>Continue</Text>
+            </Pressable>
+            <Text style={styles.skipHint}>or swipe up, anywhere on screen</Text>
+          </Animated.View>
         )}
       </View>
 
@@ -1088,6 +1218,7 @@ export function HoldToOpenFanReveal({
         onClose={() => setSelectedIndex(null)}
       />
       </Animated.View>
+      </GestureDetector>
       {leaving ? (
         <DealingOverlay total={total} verso={verso} cardW={cardW} cardH={cardH} width={width} height={height} />
       ) : null}
@@ -1167,6 +1298,11 @@ const styles = StyleSheet.create({
     left: "50%",
     top: "42%",
   },
+  sparkleGlow: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
   // A normal, non-absolute flex child of fanArea — fanArea's own alignItems/justifyContent
   // ("center"/"center") does the actual screen-centering, same as it already does for
   // FanCard/OpenFlourish; this group just stacks its own two children (the sized stack box, then
@@ -1198,11 +1334,11 @@ const styles = StyleSheet.create({
     fontFamily: mono, fontSize: 9, letterSpacing: 1.8, textTransform: "uppercase",
     color: "rgba(244,236,224,0.28)", marginTop: 2,
   },
-  continueWrap: { alignItems: "center", gap: spacing.md },
-  totalLabel: {
-    fontFamily: mono, fontSize: 10.5, letterSpacing: 2, color: "rgba(244,236,224,0.5)",
-  },
-  totalValue: { fontFamily: fonts.bold, fontSize: 13, color: "#f4ece0" },
+  // `width: "100%"` is load-bearing, not cosmetic — this is the GestureDetector's own hit area
+  // (see its call site), and `footer`'s own `alignItems: "center"` would otherwise shrink this
+  // view to just its content's width (the button + hint text), leaving a swipe started anywhere
+  // outside that narrow centered column completely undetected.
+  continueWrap: { alignItems: "center", gap: spacing.md, width: "100%" },
   continueButton: {
     height: 56,
     minWidth: 220,

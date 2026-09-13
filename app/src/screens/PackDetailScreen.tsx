@@ -60,15 +60,21 @@ export function PackDetailScreen() {
   // point of a drop's scarcity, so a bulk buy there would undercut its own mechanic).
   const bulkEligible = sku?.category === "cards";
 
+  // Gated here, before the confirm sheet ever opens — not inside handleConfirm — because that
+  // sheet is itself a native Modal, and requireAuth's own sign-in sheet is too; two Modals open
+  // at once is unreliable (especially on Android), so a guest never gets past this point without
+  // the confirm sheet opening at all. By the time handleConfirm runs, sign-in is guaranteed.
   function handleOpenSheet() {
-    setQuantity(1);
-    setSheetOpen(true);
+    requireAuth(() => {
+      setQuantity(1);
+      setSheetOpen(true);
+    });
   }
 
   function handleConfirm() {
     if (!sku) return;
-    requireAuth(async () => {
-      if (isRippingRef.current) return;
+    if (isRippingRef.current) return;
+    (async () => {
       isRippingRef.current = true;
       try {
         const result = await flow.startFlow(sku, bulkEligible ? quantity : 1);
@@ -81,7 +87,7 @@ export function PackDetailScreen() {
       } finally {
         isRippingRef.current = false;
       }
-    });
+    })();
   }
 
   if (!sku) return <View style={styles.fill} />;

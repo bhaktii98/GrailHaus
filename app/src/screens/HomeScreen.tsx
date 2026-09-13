@@ -1,23 +1,23 @@
 import { useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Image as PhotoImage } from "expo-image";
-import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, type CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { Category, Listing, RarityTierLevel, RecentPull } from "@grailhaus/shared";
+import type { Listing, RarityTierLevel, RecentPull } from "@grailhaus/shared";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSessionViewModel } from "../viewmodels/useSessionViewModel";
 import { useHomeViewModel } from "../viewmodels/useHomeViewModel";
+import { useManualRefresh } from "../hooks/useManualRefresh";
 import { useCategoriesViewModel } from "../viewmodels/useCategoriesViewModel";
 import { useRecentActivityViewModel } from "../viewmodels/useRecentActivityViewModel";
 import type { CollectionProgressSummary } from "../viewmodels/useHomeViewModel";
-import { useHideTabBarOnScroll, useTabBarClearance, useTabBarHidden } from "../navigation/tabBarVisibility";
+import { useHideTabBarOnScroll, useTabBarClearance } from "../navigation/tabBarVisibility";
 import { useAuthStore } from "../state/authStore";
 import { useOnboardingStore } from "../state/onboardingStore";
-import { resetOnboarding } from "../lib/onboarding";
 import { PackFace } from "../components/PackFace";
 import { WatchDial } from "../components/WatchDial";
 import { Countdown } from "../components/Countdown";
@@ -46,18 +46,19 @@ type Nav = CompositeNavigationProp<
  *   viewer-count backend, and none is planned; flagging it here since it reads as real.
  * - Your Collection Progress: real once signed in with ≥1 owned item — total value and the
  *   cards/watches value split both come straight off `/me/portfolio` (see useHomeViewModel's
- *   `collectionProgress`). Two pieces the mockup wants still have no backing endpoint and stay
- *   on `SAMPLE_COLLECTION` below until one exists: (1) a day-over-day value delta ("+1.84%") —
- *   needs a portfolio-value-history/snapshot mechanism server-side; (2) per-set completion
- *   counts ("7 / 9 Prism Core") — needs a full per-collection catalog census endpoint (today's
- *   catalog is only readable one item at a time via `/items/:id`, or via `/packs`' own roster,
- *   neither of which gives "how many total items exist in the Prism Core set").
+ *   `collectionProgress`). Two pieces the mockup wants have no backing endpoint at all and are
+ *   dropped entirely rather than faked: (1) a day-over-day value delta ("+1.84%") — needs a
+ *   portfolio-value-history/snapshot mechanism server-side; (2) per-set completion counts
+ *   ("7 / 9 Prism Core") — needs a full per-collection catalog census endpoint (today's catalog
+ *   is only readable one item at a time via `/items/:id`, or via `/packs`' own roster, neither of
+ *   which gives "how many total items exist in the Prism Core set"). Before sign-in or before a
+ *   first pull, this shows a plain empty state rather than fabricated numbers.
  * - Marketplace Highlights: real whenever `/listings` has anything — item, category, price,
- *   seller. Falls back to `SAMPLE_LISTINGS` only while the marketplace is empty (a seeding gap,
- *   not a missing-field gap). Two sub-fields the mockup wants have no backing at all and are
- *   dropped from the real rows entirely rather than faked: comp-price deltas ("-12% vs comp",
- *   needs market-average analytics per item) and "offers on yours" (this app only has fixed-
- *   price listings, per PRD §30-32 — there's no offer/bid system for that count to come from).
+ *   seller. Shows a plain empty state while the marketplace is empty, rather than fabricated
+ *   rows. Two sub-fields the mockup wants have no backing at all and are dropped from the real
+ *   rows entirely rather than faked: comp-price deltas ("-12% vs comp", needs market-average
+ *   analytics per item) and "offers on yours" (this app only has fixed-price listings, per PRD
+ *   §30-32 — there's no offer/bid system for that count to come from).
  * - Recently Revealed: real — `GET /activity/recent` returns the most recent genuine pack pulls
  *   (owner, item, timestamp), filtered to actual reveals rather than marketplace transfers (see
  *   `useRecentActivityViewModel`). No sample fallback: with zero pulls yet, the section shows a
@@ -70,20 +71,12 @@ export function HomeScreen() {
   const home = useHomeViewModel();
   const { categories } = useCategoriesViewModel();
   const recentActivity = useRecentActivityViewModel();
+  const { isRefreshing, refresh } = useManualRefresh(() => Promise.all([home.refetch(), recentActivity.refetch()]));
   const requireAuth = useAuthStore((s) => s.requireAuth);
   const setNeedsOnboarding = useOnboardingStore((s) => s.setNeedsOnboarding);
   const scrollHandler = useHideTabBarOnScroll();
   const tabBarClearance = useTabBarClearance();
-  const hidden = useTabBarHidden();
   const [headerHeight, setHeaderHeight] = useState(insets.top + 58);
-
-  const headerAnimatedStyle = useAnimatedStyle(
-    () => ({
-      transform: [{ translateY: -hidden.value * headerHeight }],
-      opacity: 1 - hidden.value,
-    }),
-    [headerHeight]
-  );
 
   function handleHeaderLayout(e: LayoutChangeEvent) {
     setHeaderHeight(e.nativeEvent.layout.height);
@@ -91,7 +84,6 @@ export function HomeScreen() {
 
   function handleReplayOnboarding() {
     if (!__DEV__) return;
-    resetOnboarding();
     setNeedsOnboarding(true);
   }
 
@@ -107,10 +99,15 @@ export function HomeScreen() {
         style={styles.ambientWash}
       />
 
+      {/* Opaque strip behind the true status bar (battery/clock) row — the header row below it
+          stays transparent-over-gradient on purpose, but this exact sliver has to be solid or
+          scrolled cards show through right behind the system icons as the list moves. */}
+      <View pointerEvents="none" style={[styles.statusBarCover, { height: insets.top }]} />
+
       <Animated.View
         onLayout={handleHeaderLayout}
         pointerEvents="box-none"
-        style={[styles.header, styles.headerOverlay, { paddingTop: insets.top + 12 }, headerAnimatedStyle]}
+        style={[styles.header, styles.headerOverlay, { paddingTop: insets.top + 12 }]}
       >
         <Pressable style={styles.brand} onLongPress={handleReplayOnboarding} disabled={!__DEV__}>
           <View style={styles.brandChip}>
@@ -144,6 +141,7 @@ export function HomeScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
       >
         <View style={styles.scrollInner}>
           {home.featuredDrop && (
@@ -211,9 +209,11 @@ export function HomeScreen() {
             onAction={() => navigation.navigate("Marketplace")}
           >
             <View style={{ gap: spacing.sm }}>
-              {home.recentListings.length > 0
-                ? home.recentListings.map((listing) => <RealListingRow key={listing.id} listing={listing} />)
-                : SAMPLE_LISTINGS.map((listing) => <ListingRow key={listing.name} listing={listing} />)}
+              {home.recentListings.length > 0 ? (
+                home.recentListings.map((listing) => <RealListingRow key={listing.id} listing={listing} />)
+              ) : (
+                <Text style={styles.revealedEmpty}>{copy.marketplaceHighlights.empty}</Text>
+              )}
             </View>
           </Section>
         </View>
@@ -437,14 +437,6 @@ function Section({
   );
 }
 
-/**
- * SAMPLE DATA — visual placeholder only, kept as the fallback rendered when there's nothing
- * real yet. `SAMPLE_COLLECTION` and `SAMPLE_LISTINGS` are shown only before there's real data to
- * replace them with (no session / no owned items; an empty marketplace) — see
- * `CollectionProgressCard` and `RealListingRow` above for the real branches. "Recently Revealed"
- * has no sample fallback (see this file's top comment) — `RecentPullCard` below only ever renders
- * real `/activity/recent` rows.
- */
 type PullCardData = {
   handle: string;
   badge: "CHASE" | "GRAIL" | null;
@@ -487,44 +479,6 @@ function pullCardFromActivity(pull: RecentPull): PullCardData {
   };
 }
 
-const SAMPLE_COLLECTION = {
-  totalLabel: "$35,143",
-  deltaLabel: "+1.84%",
-  sets: [
-    { name: "Prism Core", current: 7, total: 9, note: "2 slots left · Prism badge at 9", art: accents.cards },
-    { name: "Glacier Seal", current: 18, total: 24, note: null, art: { top: "#59D8FF", bottom: "#1668D8" } },
-  ],
-};
-
-const SAMPLE_LISTINGS: {
-  name: string;
-  meta: string;
-  priceLabel: string;
-  deltaLabel: string;
-  deltaColor: string;
-  category: Category;
-  art: [string, string];
-}[] = [
-  {
-    name: "VEILWROUGHT",
-    meta: "Holo · 6 listed · fills your slot 08",
-    priceLabel: "$640",
-    deltaLabel: "−12% vs comp",
-    deltaColor: "#8BF285",
-    category: "cards",
-    art: ART_GRADIENT.vault_break,
-  },
-  {
-    name: "Black Bay 58",
-    meta: "Tudor · 2 offers on yours",
-    priceLabel: "$3,400",
-    deltaLabel: "your listing",
-    deltaColor: "#F2C46B",
-    category: "watches",
-    art: ART_GRADIENT.archive,
-  },
-];
-
 function RecentPullCard({ pull }: { pull: PullCardData }) {
   return (
     <View style={styles.pullCard}>
@@ -558,47 +512,17 @@ function RecentPullCard({ pull }: { pull: PullCardData }) {
 
 /**
  * Real once `progress.hasData` (signed in, ≥1 owned item) — total value and the cards/watches
- * split both come straight off `/me/portfolio`. No day-over-day delta pill in that branch: the
- * API has no value-history to compute one from, and this screen never invents a number (see the
- * top-of-file comment for what a real delta and real per-set completion would each need
- * server-side). Falls back to the fully-dummy `SAMPLE_COLLECTION` card — delta pill included —
- * before sign-in or before a first pull, same as the rest of Home's placeholder content.
+ * split both come straight off `/me/portfolio`. No day-over-day delta pill: the API has no
+ * value-history to compute one from, and this screen never invents a number (see the top-of-file
+ * comment for what a real delta and real per-set completion would each need server-side). Before
+ * sign-in or before a first pull, this shows a plain empty state rather than fabricated numbers —
+ * same rule "Recently Revealed" already follows.
  */
 function CollectionProgressCard({ progress }: { progress: CollectionProgressSummary }) {
   if (!progress.hasData) {
     return (
       <View style={styles.collectionCard}>
-        <View style={styles.collectionHeaderRow}>
-          <View>
-            <Text style={styles.collectionEyebrow}>PORTFOLIO</Text>
-            <Text style={styles.collectionValue}>{SAMPLE_COLLECTION.totalLabel}</Text>
-          </View>
-          <View style={styles.collectionDeltaPill}>
-            <Text style={styles.collectionDeltaText}>{SAMPLE_COLLECTION.deltaLabel}</Text>
-          </View>
-        </View>
-        <View style={styles.collectionDivider} />
-        <View style={{ gap: spacing.md }}>
-          {SAMPLE_COLLECTION.sets.map((set) => (
-            <View key={set.name}>
-              <View style={styles.setRow}>
-                <Text style={styles.setName}>{set.name}</Text>
-                <Text style={styles.setProgress}>
-                  {set.current} / {set.total}
-                </Text>
-              </View>
-              <View style={styles.setTrack}>
-                <LinearGradient
-                  colors={[set.art.top, set.art.bottom]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.setFill, { width: `${(set.current / set.total) * 100}%` }]}
-                />
-              </View>
-              {set.note && <Text style={styles.setNote}>{set.note}</Text>}
-            </View>
-          ))}
-        </View>
+        <Text style={styles.revealedEmpty}>{copy.collectionProgress.empty}</Text>
       </View>
     );
   }
@@ -643,32 +567,10 @@ function CollectionProgressCard({ progress }: { progress: CollectionProgressSumm
   );
 }
 
-function ListingRow({ listing }: { listing: (typeof SAMPLE_LISTINGS)[number] }) {
-  return (
-    <View style={styles.listingRow}>
-      {/* Cards keeps its own pack-face art; every other category shares the watch-dial
-          treatment, same fallback rule as DoorCard/RealListingRow below. */}
-      {listing.category === "cards" ? (
-        <PackFace art={listing.art} width={42} height={58} radius={8} />
-      ) : (
-        <WatchDial art={listing.art} size={44} />
-      )}
-      <View style={styles.listingInfo}>
-        <Text style={styles.listingName}>{listing.name}</Text>
-        <Text style={styles.listingMeta}>{listing.meta}</Text>
-      </View>
-      <View style={styles.listingPriceWrap}>
-        <Text style={styles.listingPrice}>{listing.priceLabel}</Text>
-        <Text style={[styles.listingDelta, { color: listing.deltaColor }]}>{listing.deltaLabel}</Text>
-      </View>
-    </View>
-  );
-}
-
 /**
- * A live `/listings` row — item, category, price, and seller are all real. No delta/comp line
- * here (unlike the dummy `ListingRow` above): there's no comp-price analytics endpoint to draw
- * one from, and this screen doesn't invent one just to fill the space the mockup left for it.
+ * A live `/listings` row — item, category, price, and seller are all real. No delta/comp line:
+ * there's no comp-price analytics endpoint to draw one from, and this screen doesn't invent one
+ * just to fill the space the mockup left for it.
  */
 function RealListingRow({ listing }: { listing: Listing }) {
   const item = listing.item;
@@ -711,6 +613,14 @@ const styles = StyleSheet.create({
   // Floats over the scroll content (like the bottom pill nav) so hiding it on scroll-down
   // doesn't leave a reserved, mismatched-colored strip behind it — same fix, same reason.
   headerOverlay: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 },
+  statusBarCover: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 11,
+    backgroundColor: ink.groundDeep,
+  },
   brand: { flexDirection: "row", alignItems: "center", gap: 9 },
   brandChip: { width: 26, height: 26, borderRadius: 8, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.14)" },
   brandIcon: { width: "100%", height: "100%" },
@@ -899,24 +809,12 @@ const styles = StyleSheet.create({
   collectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   collectionEyebrow: { ...typography.eyebrow, letterSpacing: 1.6 },
   collectionValue: { ...typography.pageHeading, fontSize: 30, marginTop: 6 },
-  collectionDeltaPill: {
-    height: 28,
-    paddingHorizontal: 11,
-    borderRadius: 999,
-    backgroundColor: "rgba(99,232,92,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(99,232,92,0.4)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  collectionDeltaText: { ...typography.chipLabel, color: "#8BF285" },
   collectionDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.12)", marginVertical: 14 },
   setRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   setName: { ...typography.body, color: ink.text },
   setProgress: { ...typography.chipLabel, color: "#8BF285" },
   setTrack: { height: 6, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.12)", marginTop: 6, overflow: "hidden" },
   setFill: { height: "100%", borderRadius: 4 },
-  setNote: { ...typography.footNote, marginTop: 5 },
 
   listingRow: {
     flexDirection: "row",
@@ -933,5 +831,4 @@ const styles = StyleSheet.create({
   listingMeta: { ...typography.footNote, marginTop: 2 },
   listingPriceWrap: { alignItems: "flex-end", flexShrink: 0 },
   listingPrice: { ...typography.chipLabel, color: ink.text },
-  listingDelta: { ...typography.footNote, marginTop: 2 },
 });

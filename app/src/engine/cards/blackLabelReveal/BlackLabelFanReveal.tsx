@@ -16,10 +16,15 @@ import { HoldToOpenFanReveal } from "../reveal/holdToOpen/HoldToOpenFanReveal";
 export function BlackLabelFanReveal({
   items,
   sku,
+  initialOpenedCount,
+  onProgress,
   onDone,
 }: {
   items: PulledOwnedItem[];
   sku: PackSku;
+  /** Passed straight through — see HoldToOpenFanReveal's own doc comment. */
+  initialOpenedCount?: number;
+  onProgress?: (pulledCount: number) => void;
   onDone: () => void;
 }) {
   const deck = useMemo(() => adaptPulledItemsToBlackLabelDeck(items, sku), [items, sku]);
@@ -40,6 +45,8 @@ export function BlackLabelFanReveal({
         accentRGB: "201,162,74",
         vignetteGlow: "rgba(180,140,60,0.20)",
       }}
+      initialOpenedCount={initialOpenedCount}
+      onProgress={onProgress}
       onDone={onDone}
     />
   );

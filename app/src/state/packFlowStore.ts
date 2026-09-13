@@ -54,6 +54,18 @@ interface PackFlowState {
    * shows, and never anything about the packs before or after it. */
   resumedToSummary: boolean;
   /**
+   * Non-null only when the pack at `currentPackIndex` was reconstructed from disk *and* had
+   * partial per-card progress worth resuming into — how many of its cards were already dock'd
+   * before the process died. Mutually exclusive with `resumedToSummary`: a pack resumes to
+   * *either* its own summary (nothing worth skipping ahead to, or everything already shown) *or*
+   * straight to its "cards" step landed on this many cards already opened, never both. Each card
+   * flow engine reads this once at mount, same as `resumedToSummary`, to decide its initial step
+   * and to seed `useHoldToOpenDeck`'s starting status instead of every card starting sealed. Null
+   * for a bulk run (which never sets this — see usePackFlowViewModel.resumeFlow) and for any
+   * ordinary fresh start/advance.
+   */
+  resumedOpenedCount: number | null;
+  /**
    * Where a bulk (10-pack) run's curated presentation currently is — which stage, and how many
    * grails have been witnessed. Null for a single-pack purchase, which has no stages at all and
    * keeps running the original sequential rip untouched.
@@ -75,7 +87,12 @@ interface PackFlowState {
     sku: PackSku,
     purchaseId: string,
     packs: PulledOwnedItem[][],
-    opts?: { resumeAtIndex?: number; resumedToSummary?: boolean; bulkReveal?: BatchRevealState | null }
+    opts?: {
+      resumeAtIndex?: number;
+      resumedToSummary?: boolean;
+      resumedOpenedCount?: number | null;
+      bulkReveal?: BatchRevealState | null;
+    }
   ) => void;
   /** Moves a bulk run to a named stage (the stage machine's transitions live in shared's
    * `nextStage`, not here — this store only records the outcome). No-op for a single pack. */
@@ -107,10 +124,12 @@ export const usePackFlowStore = create<PackFlowState>((set, get) => ({
   isBatchSummary: false,
   phase: "processing",
   resumedToSummary: false,
+  resumedOpenedCount: null,
   bulkReveal: null,
   start: (sku, purchaseId, packs, opts) => {
     const resumeAtIndex = opts?.resumeAtIndex ?? 0;
     const resumedToSummary = opts?.resumedToSummary ?? false;
+    const resumedOpenedCount = opts?.resumedOpenedCount ?? null;
     // Defensive clamp: a resume index at or past the end of `packs` (shouldn't happen — it would
     // mean the batch was already fully watched before the marker was cleared) lands directly on
     // the batch summary rather than reading out of bounds.
@@ -125,8 +144,13 @@ export const usePackFlowStore = create<PackFlowState>((set, get) => ({
       packs,
       currentPackIndex: pastEnd ? Math.max(0, packs.length - 1) : resumeAtIndex,
       isBatchSummary: pastEnd,
-      phase: resumedToSummary || pastEnd ? "summary" : "processing",
+      // A partial-progress resume lands straight on the per-card reveal (its own tear already
+      // happened before the process died) — "revealing", same phase `handleBeginRip` sets for a
+      // fresh pack's own tear-complete transition — not "processing"/"ready", which would replay
+      // beats already watched.
+      phase: resumedToSummary || pastEnd ? "summary" : resumedOpenedCount != null ? "revealing" : "processing",
       resumedToSummary: resumedToSummary && !pastEnd,
+      resumedOpenedCount: pastEnd ? null : resumedOpenedCount,
       bulkReveal,
     });
   },
@@ -169,7 +193,12 @@ export const usePackFlowStore = create<PackFlowState>((set, get) => ({
     // "ready", not "processing" — CardFlowEngine skips the processing narration for every pack
     // after the first in a batch (see its own `skipProcessing`), so this mirrors the engine's
     // actual initial step instead of describing a beat that won't play.
-    set({ currentPackIndex: nextIndex, phase: nextIndex > 0 ? "ready" : "processing", resumedToSummary: false });
+    set({
+      currentPackIndex: nextIndex,
+      phase: nextIndex > 0 ? "ready" : "processing",
+      resumedToSummary: false,
+      resumedOpenedCount: null,
+    });
   },
   skipToBatchSummary: () => {
     const { bulkReveal } = get();
@@ -190,6 +219,7 @@ export const usePackFlowStore = create<PackFlowState>((set, get) => ({
       isBatchSummary: false,
       phase: "processing",
       resumedToSummary: false,
+      resumedOpenedCount: null,
       bulkReveal: null,
     }),
 }));

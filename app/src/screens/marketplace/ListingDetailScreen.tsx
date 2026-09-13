@@ -10,6 +10,7 @@ import { CardFace } from "../../components/CardFace";
 import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { useSessionViewModel } from "../../viewmodels/useSessionViewModel";
+import { useAuthStore } from "../../state/authStore";
 import { useListingViewModel } from "../../viewmodels/useListingViewModel";
 import { useRarityTiers } from "../../viewmodels/useRarityTiers";
 import { useActionBarPadding, useHideTabBarOnScreen } from "../../navigation/tabBarVisibility";
@@ -39,6 +40,7 @@ export function ListingDetailScreen() {
   // "Chase" map that didn't even match the real tier names ("Core"/"Prime"/"Grail" etc.).
   const rarityTiers = useRarityTiers(item.category);
   const session = useSessionViewModel();
+  const requireAuth = useAuthStore((s) => s.requireAuth);
   const { isWorking, delist } = useListingViewModel();
   // Compared on the opaque public id, which both `/me` (Profile.id) and ListingParty.id
   // externalize from the same `profiles.public_id` column — a username match was the old proxy
@@ -142,7 +144,10 @@ export function ListingDetailScreen() {
             </Pressable>
           </>
         ) : (
-          <Pressable style={styles.buyButton} onPress={() => navigation.navigate("BuyListing", { listing })}>
+          <Pressable
+            style={styles.buyButton}
+            onPress={() => requireAuth(() => navigation.navigate("BuyListing", { listing }))}
+          >
             <LinearGradient colors={isCards ? ["#B14BFF", "#5B1FD6"] : ["#FFD75E", "#E08A16"]} style={StyleSheet.absoluteFill} />
             <Text style={[styles.buyLabel, !isCards && { color: "#2A1706" }]}>{copy.buyNow}</Text>
             <View style={styles.buyPricePill}>

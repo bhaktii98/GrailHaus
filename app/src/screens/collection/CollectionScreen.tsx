@@ -274,7 +274,7 @@ export function CollectionScreen() {
           columnWrapperStyle={styles.gridRow}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={vm.isRefreshing} onRefresh={vm.refresh} tintColor={colors.textSecondary} />
+            <RefreshControl refreshing={vm.isRefreshing} onRefresh={vm.refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />
           }
           ListHeaderComponent={
             <View onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
@@ -337,20 +337,54 @@ function PortfolioHeader({
   const up = live.unrealizedPnlCents >= 0;
   const trendColor = up ? colors.success : colors.danger;
 
+  // A brief highlight flash the instant the drift clock actually moves the number — the "Reprices
+  // every 30s" dot below was previously just a static label, so the value could tick invisibly
+  // (a step change on a 30s cadence is easy to miss entirely). Skipped on the very first render
+  // (there's nothing to flash relative to yet) and on any change driven by something other than a
+  // real tick (e.g. a fresh fetch resolving) still fires — which is fine, that's also a real
+  // change in what's displayed.
+  const flash = useSharedValue(0);
+  const prevNetWorthRef = useRef(live.netWorthCents);
+  useEffect(() => {
+    if (prevNetWorthRef.current !== live.netWorthCents) {
+      flash.value = withSequence(withTiming(1, { duration: 120 }), withTiming(0, { duration: 900 }));
+    }
+    prevNetWorthRef.current = live.netWorthCents;
+  }, [live.netWorthCents, flash]);
+  const heroValueAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: 1 - flash.value * 0.35,
+    transform: [{ scale: 1 + flash.value * 0.03 }],
+  }));
+
+  // The "live" dot next to "Reprices every 30s" used to just sit there — a still dot next to a
+  // label claiming to be live reads as decoration, not a fact. A slow breathing loop (unrelated
+  // to the flash above, which is tied to the tick actually landing) makes the claim visible on
+  // sight, not just true in the small print.
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(0.35, { duration: 900 }), withTiming(1, { duration: 900 })), -1);
+  }, [pulse]);
+  const liveDotAnimatedStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+
   return (
     <View style={styles.headerBlock}>
       <View style={styles.heroCard}>
         <View style={styles.heroTop}>
           <Text style={styles.heroEyebrow}>{copy.tracker.portfolioValue}</Text>
           <View style={styles.liveTag}>
-            <View style={[styles.liveDot, { backgroundColor: trendColor }]} />
+            <Animated.View style={[styles.liveDot, { backgroundColor: trendColor }, liveDotAnimatedStyle]} />
             <Text style={styles.liveText}>{copy.tracker.liveNote}</Text>
           </View>
         </View>
 
-        <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+        <Animated.Text
+          style={[styles.heroValue, heroValueAnimatedStyle]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+        >
           {money(live.netWorthCents)}
-        </Text>
+        </Animated.Text>
         <Text style={styles.heroSub}>
           {copy.tracker.heroSub(moneyWhole(live.holdingsValueCents), moneyWhole(live.walletCents))}
         </Text>

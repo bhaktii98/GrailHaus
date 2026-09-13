@@ -4,6 +4,10 @@ import { updatePack } from "@/lib/actions";
 import { computeRealEvCents } from "@/lib/ev";
 import { Button, Card, CardTitle, Field, Info, Input, PageHeader, Pill, Table, TableInput, Td, Th, Thead } from "@/components/ui";
 
+/** Index = `Date#getUTCDay()` (0=Sunday..6=Saturday) — matches the `recurrence_weekdays` column
+ * and dropRecurrence.ts on the server, which both use the same convention. */
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 /** Generalizes the spec's own pacing language ("Cards 1-2 establish rhythm... Card 5 becomes
  * the major tension point") to any slot count, including the single-slot watch case. */
 function describeSlot(position: number, totalSlots: number) {
@@ -37,9 +41,13 @@ async function getPack(id: string) {
     restock_interval_seconds: number | null;
     goes_live_at: string | null;
     ends_at: string | null;
+    recurrence_weekdays: number[] | null;
+    recurrence_time_utc: string | null;
+    recurrence_duration_minutes: number | null;
   }>(
     `select id, category, tier, name, price_cents, item_count,
-            stock_remaining, max_stock, restock_amount, restock_interval_seconds, goes_live_at, ends_at
+            stock_remaining, max_stock, restock_amount, restock_interval_seconds, goes_live_at, ends_at,
+            recurrence_weekdays, recurrence_time_utc, recurrence_duration_minutes
      from public.packs where id = $1`,
     [id]
   );
@@ -150,6 +158,42 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
             <Field label="Ends at" info="Optional hard cutoff for a drop — leave blank to let it end purely by selling out.">
               <Input name="endsAt" type="datetime-local" defaultValue={toDatetimeLocal(pack.ends_at)} />
             </Field>
+          </div>
+        </Card>
+
+        <Card>
+          <CardTitle info="Makes this pack go live on a repeating weekly schedule instead of a single goesLiveAt/endsAt window — e.g. every Mon/Wed/Fri at 18:00 UTC, live for 2 hours each time. Stock resets to Max stock (above) at the start of every occurrence. Pick at least one day, a time, and a duration together — leaving any of the three blank turns recurrence off and this pack falls back to the plain Goes live at / Ends at fields above.">
+            Recurring drop (optional)
+          </CardTitle>
+          <div className="flex flex-col gap-4">
+            <Field label="Days (UTC)" info="Which days of the week a new occurrence starts on.">
+              <div className="flex flex-wrap gap-3">
+                {WEEKDAY_LABELS.map((label, day) => (
+                  <label key={day} className="inline-flex items-center gap-1.5 text-sm text-text">
+                    <input
+                      type="checkbox"
+                      name={`recurrenceDay_${day}`}
+                      defaultChecked={pack.recurrence_weekdays?.includes(day) ?? false}
+                      className="h-4 w-4 rounded border-border accent-accent"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </Field>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <Field label="Time (UTC)" info="The time of day each occurrence starts.">
+                <Input name="recurrenceTimeUtc" type="time" defaultValue={pack.recurrence_time_utc?.slice(0, 5) ?? ""} />
+              </Field>
+              <Field label="Duration (minutes)" info="How long each occurrence stays live before closing until its next scheduled day.">
+                <Input
+                  name="recurrenceDurationMinutes"
+                  type="number"
+                  min={1}
+                  defaultValue={pack.recurrence_duration_minutes ?? ""}
+                />
+              </Field>
+            </div>
           </div>
         </Card>
 

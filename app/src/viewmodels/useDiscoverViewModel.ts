@@ -160,9 +160,14 @@ export function useDiscoverViewModel(category: Category) {
     [category, packsQuery.data, itemsQuery.data, listingsQuery.data, portfolioQuery.data]
   );
 
+  async function refetch() {
+    await Promise.all([packsQuery.refetch(), itemsQuery.refetch(), listingsQuery.refetch(), portfolioQuery.refetch()]);
+  }
+
   return {
     isLoading,
     error: packsQuery.error ? (packsQuery.error as Error).message : null,
+    refetch,
     ...derived,
   };
 }
@@ -216,5 +221,14 @@ export function useDiscoverAllCategoriesViewModel() {
 
   const allItems = useMemo(() => Object.values(byCategory).flatMap((c) => c.items), [byCategory]);
 
-  return { isLoading, byCategory, allItems };
+  async function refetch() {
+    await Promise.all([
+      ...packsResults.map((r) => r.refetch()),
+      ...itemsResults.map((r) => r.refetch()),
+      ...listingsResults.map((r) => r.refetch()),
+      portfolioQuery.refetch(),
+    ]);
+  }
+
+  return { isLoading, byCategory, allItems, refetch };
 }

@@ -11,7 +11,10 @@ export async function activityRoutes(app: FastifyInstance) {
         summary: "Recent pack pulls across every user — public, same access model as /packs",
         querystring: {
           type: "object",
-          properties: { limit: { type: "number", minimum: 1, maximum: 50, default: 20 } },
+          properties: {
+            limit: { type: "number", minimum: 1, maximum: 50, default: 20 },
+            packId: { type: "string", description: "Scopes to one pack's own pulls — a single drop's live claims feed." },
+          },
         },
         response: {
           200: {
@@ -30,8 +33,8 @@ export async function activityRoutes(app: FastifyInstance) {
       },
     },
     async (req) => {
-      const { limit } = req.query as { limit?: number };
-      return getRecentPulls(limit);
+      const { limit, packId } = req.query as { limit?: number; packId?: string };
+      return getRecentPulls(limit, packId);
     }
   );
 }

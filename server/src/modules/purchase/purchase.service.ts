@@ -3,6 +3,7 @@ import type { OwnershipWeightTable, PackSku, PressureState, PulledItem, PulledOw
 import { pool } from "../../db/pool.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../../lib/errors.js";
 import { getPackSkuById } from "../packs/packs.service.js";
+import { broadcastStockUpdate } from "../packs/dropBroadcast.js";
 import { findItemDetailsByIds } from "../items/items.repository.js";
 import { toItemDetail } from "../items/items.service.js";
 import {
@@ -235,6 +236,14 @@ async function executePurchase(claim: PurchaseRow, packSku: PackSku): Promise<Pu
     await markPurchaseCompleted(client, claim.id, totalCost, { items: allItems, ownedItemIds, packCoordinates });
 
     await client.query("COMMIT");
+
+    // A drop (goesLiveAt set) is the one case with a live screen actually watching this pack's
+    // stock count — an evergreen pack has no such screen, so there's nothing to notify. Fired
+    // after COMMIT, not before: a socket message implying a purchase happened has to be true.
+    if (goesLiveAt != null && stockRemaining !== null) {
+      broadcastStockUpdate(claim.pack_id, stockRemaining - claim.quantity);
+    }
+
     return {
       purchaseId: claim.id,
       status: "completed",

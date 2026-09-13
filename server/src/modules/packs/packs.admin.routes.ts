@@ -34,6 +34,21 @@ export async function packsAdminRoutes(app: FastifyInstance) {
               description: "ISO datetime. Null = evergreen, available immediately. A future date makes this a scheduled drop.",
             },
             endsAt: { type: ["string", "null"], description: "ISO datetime — optional hard cutoff for a drop." },
+            recurrenceWeekdays: {
+              type: ["array", "null"],
+              items: { type: "number", minimum: 0, maximum: 6 },
+              description:
+                "0=Sunday..6=Saturday. Set together with recurrenceTimeUtc/recurrenceDurationMinutes to make this a recurring drop (goes live on this cadence indefinitely, restocking to maxStock each occurrence) instead of a one-off goesLiveAt/endsAt. Send an empty array (or null) to turn a recurring drop back into a plain one-off/evergreen pack.",
+            },
+            recurrenceTimeUtc: {
+              type: ["string", "null"],
+              description: "\"HH:MM\" UTC, e.g. \"18:00\" — the time of day each occurrence starts.",
+            },
+            recurrenceDurationMinutes: {
+              type: ["number", "null"],
+              minimum: 1,
+              description: "How long each occurrence stays live before closing until its next scheduled day.",
+            },
             slotProbabilities: {
               type: "array",
               description:

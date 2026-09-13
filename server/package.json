@@ -16,6 +16,7 @@
     "@fastify/cors": "^10.0.1",
     "@fastify/swagger": "^9.4.0",
     "@fastify/swagger-ui": "^5.2.1",
+    "@fastify/websocket": "^11.3.0",
     "@grailhaus/shared": "*",
     "decimal.js": "^10.4.3",
     "dotenv": "^16.4.5",

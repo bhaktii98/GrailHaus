@@ -21,6 +21,9 @@ export interface AdminUpdatePackInput {
   restockIntervalSeconds?: number | null;
   goesLiveAt?: string | null;
   endsAt?: string | null;
+  recurrenceWeekdays?: number[] | null;
+  recurrenceTimeUtc?: string | null;
+  recurrenceDurationMinutes?: number | null;
   slotProbabilities?: SlotProbabilityInput[];
 }
 
@@ -39,6 +42,12 @@ function isPositiveInt(value: number): boolean {
 
 function isValidDate(value: string): boolean {
   return !Number.isNaN(new Date(value).getTime());
+}
+
+const TIME_UTC_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
+function isValidTimeUtc(value: string): boolean {
+  return TIME_UTC_PATTERN.test(value);
 }
 
 /**
@@ -86,6 +95,33 @@ export async function adminUpdatePack(packId: string, input: AdminUpdatePackInpu
   ) {
     throw new BadRequestError("endsAt must be after goesLiveAt");
   }
+  if (input.recurrenceWeekdays != null) {
+    for (const day of input.recurrenceWeekdays) {
+      if (!Number.isInteger(day) || day < 0 || day > 6) {
+        throw new BadRequestError("recurrenceWeekdays entries must be integers 0 (Sunday) through 6 (Saturday)");
+      }
+    }
+  }
+  if (input.recurrenceTimeUtc != null && !isValidTimeUtc(input.recurrenceTimeUtc)) {
+    throw new BadRequestError("recurrenceTimeUtc must be \"HH:MM\" (UTC), or null");
+  }
+  if (input.recurrenceDurationMinutes != null && !isPositiveInt(input.recurrenceDurationMinutes)) {
+    throw new BadRequestError("recurrenceDurationMinutes must be a positive integer, or null");
+  }
+  // A recurring drop needs all three set together — a partial rule (e.g. weekdays with no time)
+  // can't be computed into an occurrence at all, and would silently behave like "not recurring"
+  // (see packs.service.ts's resolveDropWindow) rather than the schedule the admin thought they
+  // just saved.
+  const recurrenceFieldsTouched = ["recurrenceWeekdays", "recurrenceTimeUtc", "recurrenceDurationMinutes"] as const;
+  const touchedCount = recurrenceFieldsTouched.filter((key) => input[key] != null).length;
+  if (touchedCount > 0 && touchedCount < recurrenceFieldsTouched.length) {
+    throw new BadRequestError(
+      "recurrenceWeekdays, recurrenceTimeUtc, and recurrenceDurationMinutes must all be set together to configure a recurring drop (or all left null/empty to clear one)"
+    );
+  }
+  if (input.recurrenceWeekdays != null && input.recurrenceWeekdays.length === 0 && touchedCount === recurrenceFieldsTouched.length) {
+    throw new BadRequestError("recurrenceWeekdays must include at least one day when recurrenceTimeUtc/recurrenceDurationMinutes are set");
+  }
 
   if (input.slotProbabilities && input.slotProbabilities.length > 0) {
     for (const row of input.slotProbabilities) {
@@ -127,6 +163,9 @@ export async function adminUpdatePack(packId: string, input: AdminUpdatePackInpu
     "restockIntervalSeconds",
     "goesLiveAt",
     "endsAt",
+    "recurrenceWeekdays",
+    "recurrenceTimeUtc",
+    "recurrenceDurationMinutes",
   ] as const) {
     if (key in input) coreUpdate[key] = input[key] as never;
   }

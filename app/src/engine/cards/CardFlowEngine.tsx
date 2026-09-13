@@ -6,6 +6,7 @@ import { Canvas, useFrame } from "@react-three/fiber/native";
 import type { DirectionalLight } from "three";
 import type { ItemDetail, PackSku } from "@grailhaus/shared";
 import { usePackFlowStore } from "../../state/packFlowStore";
+import { usePackFlowViewModel } from "../../viewmodels/usePackFlowViewModel";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
 import { GestureLayer } from "../core/GestureLayer";
 import { Renderer3DBoundary } from "../core/Renderer3DBoundary";
@@ -16,6 +17,7 @@ import { PackTear2D } from "./reveal/PackTear2D";
 import { cardPackPersonality } from "./reveal/config/cardPack.config";
 import { CardPackFanReveal } from "./reveal/CardPackFanReveal";
 import { playHapticTrack } from "../core/HapticsTrack";
+import { playSfx } from "../../lib/sfx";
 import { PackFace } from "../../components/PackFace";
 import { ProgressRing } from "../../components/ProgressRing";
 import { StatBox } from "../../components/StatBox";
@@ -99,12 +101,18 @@ export function CardFlowEngine({
   // lands directly on its summary instead of replaying the intro/tear/per-card beats the user
   // already missed. The pulled contents are identical either way.
   const resumedToSummary = usePackFlowStore((s) => s.resumedToSummary);
+  // Non-null only alongside a partial-progress resume — how many cards were already dock'd, so
+  // this can land straight on "cards" (its own tear already happened before the process died)
+  // instead of replaying processing/ready/introduction. See packFlowStore's own doc comment —
+  // mutually exclusive with `resumedToSummary` by construction.
+  const resumedOpenedCount = usePackFlowStore((s) => s.resumedOpenedCount);
+  const { recordCardOpened } = usePackFlowViewModel();
   const { owned } = useCollectionViewModel();
   // Every pack after the first in a batch skips straight past the processing narration — the
   // one purchase behind the whole batch already cleared, once, before pack one ever mounted.
   const skipProcessing = (batchContext?.index ?? 0) > 0;
   const [step, setStep] = useState<Step>(
-    resumedToSummary ? "summary" : skipProcessing ? "ready" : "processing"
+    resumedOpenedCount != null ? "cards" : resumedToSummary ? "summary" : skipProcessing ? "ready" : "processing"
   );
   const [visibleStatusRows, setVisibleStatusRows] = useState(0);
   const tearCompleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,6 +172,7 @@ export function CardFlowEngine({
     // rest" threshold — a first pass at 1000ms cut away while it was still visibly mid-bounce,
     // which read as "nothing lands." 2500ms comfortably covers a full multi-bounce settle.
     playHapticTrack(config.hapticTrack("opening", false));
+    playSfx("packTear");
     tearCompleteTimer.current = setTimeout(() => {
       // Bulk purchase: one tear stands for the whole batch — sitting through nine more of these
       // (plus fifty individual card reveals) isn't practical, and every pack's contents already
@@ -235,6 +244,8 @@ export function CardFlowEngine({
         sku={sku}
         compressed={compressed}
         autoAdvance={autoAdvance}
+        initialOpenedCount={resumedOpenedCount ?? undefined}
+        onProgress={recordCardOpened}
         onDone={handleCardsDone}
       />
     );

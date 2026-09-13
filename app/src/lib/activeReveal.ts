@@ -27,6 +27,22 @@ export interface ActiveReveal {
    * presentation picks back up.
    */
   bulkReveal?: BatchRevealState;
+  /**
+   * How many cards of the *current* pack (`packIndex`) this device has actually watched get set
+   * aside — 0 until the first card is dock'd, up to that pack's own `itemCount` once every card
+   * has been. Rewritten on every dock (see `setActiveRevealOpenedCount`, called from
+   * HoldToOpenFanReveal's `onProgress`), the same cheap single-field rewrite `setActiveRevealPackIndex`
+   * already does per pack. Reset to 0 every time `packIndex` advances (a new pack starts with
+   * nothing opened) — see `setActiveRevealPackIndex` below.
+   *
+   * This is what makes "force-stopped after opening 2 of this pack's 5 cards, reopen, land on
+   * card 3 ready to open" hold, instead of the coarser "lands on the pack's own summary" fallback
+   * every resume used before this field existed (see `resumeActiveReveal`'s own comment for when
+   * each of those two outcomes actually applies). As with every other field here, this can only
+   * ever change *where the presentation picks back up* — the pulled contents are server-side and
+   * immutable regardless of what this says.
+   */
+  openedCount?: number;
 }
 
 /**
@@ -83,7 +99,18 @@ export async function getActiveReveal(): Promise<ActiveReveal | null> {
 export async function setActiveRevealPackIndex(packIndex: number): Promise<void> {
   const current = await getActiveReveal();
   if (!current) return;
-  await setActiveReveal({ ...current, packIndex });
+  // A new pack starts with nothing opened — carrying over the previous pack's count would wrongly
+  // skip cards in this one on the next resume.
+  await setActiveReveal({ ...current, packIndex, openedCount: 0 });
+}
+
+/** Called from HoldToOpenFanReveal's `onProgress` every time a card is dock'd — see the field's
+ * own doc comment on `ActiveReveal` for what this makes possible. Same deliberate no-op if the
+ * marker was already cleared as its pack-index/bulk-state siblings. */
+export async function setActiveRevealOpenedCount(openedCount: number): Promise<void> {
+  const current = await getActiveReveal();
+  if (!current) return;
+  await setActiveReveal({ ...current, openedCount });
 }
 
 /** The bulk twin of `setActiveRevealPackIndex` — called on every stage transition and grail
@@ -110,6 +137,10 @@ export type ResumeOutcome =
       resumeIndex: number;
       /** Present only for a bulk run that had already started its curated presentation. */
       bulkReveal?: BatchRevealState;
+      /** How many cards of the resumed pack were already dock'd — see `ActiveReveal.openedCount`'s
+       * own doc comment. 0 for a bulk run (which never sets this) or a marker written before this
+       * field existed. */
+      openedCount: number;
     }
   | { kind: "unrecoverable" }; // purchase resolved (or failed) but there's nothing left to show
 
@@ -122,17 +153,17 @@ export type ResumeOutcome =
  * and the pack's config comes from the same catalog list every other screen already caches under
  * `["packs","all"]`.
  *
- * Deliberately does NOT try to reconstruct which exact beat (tear mid-swipe, card 3 of 7, the
- * rare-pull hold) the user was on within the in-progress pack — that per-card sub-state lives
- * only in the flow engine's own component state and dies with the process, same as any other
- * unsaved UI state would. What must never die is the *content*, for every pack in the batch, not
- * just the one that was on screen: every item every pack produced is still exactly what it was,
- * still fully enriched, still attributed to this purchase, still in the same order. So the
- * in-progress pack (`packIndex`) lands directly on its own summary — full contents, correct P&L,
- * nothing lost, nothing re-rolled — one of the two outcomes the interruption-safety bar
- * explicitly allows ("resumes at the right beat OR lands on the summary") — while every pack
- * before it is already-shown (nothing to redo) and every pack after it is still fully sealed,
- * completely unaffected, waiting exactly where it was.
+ * Does not try to reconstruct the exact beat the user was mid-gesture on (a flip in progress, a
+ * finger still on the current card) — that lives only in the flow engine's own component state
+ * and dies with the process, same as any other unsaved UI state would. What it does reconstruct,
+ * via `openedCount`, is how many cards of the in-progress pack had already been fully dock'd —
+ * enough for the caller to land directly on the next sealed card (see
+ * `usePackFlowViewModel.resumeFlow`), not just on the pack's own terminal summary. A pack with
+ * `openedCount` at 0 or already at its own `itemCount` still falls back to the coarser "lands on
+ * the summary" outcome — the interruption-safety bar's other explicitly-allowed shape — since
+ * there's either nothing to skip ahead to, or nothing left to reveal. Every pack before the
+ * in-progress one is already-shown (nothing to redo) and every pack after it is still fully
+ * sealed, completely unaffected, waiting exactly where it was — none of that changes here.
  */
 export async function resumeActiveReveal(): Promise<ResumeOutcome> {
   const pending = await getActiveReveal();
@@ -169,7 +200,15 @@ export async function resumeActiveReveal(): Promise<ResumeOutcome> {
     // response that already carries authoritative packIndex/cardIndex per item is left untouched.
     const packs = withPackCoordinates(chunkIntoPacks(result.items, sku.itemCount, pending.quantity));
     const resumeIndex = Math.min(Math.max(0, pending.packIndex), Math.max(0, packs.length - 1));
-    return { kind: "resume", sku, packs, purchaseId: result.purchaseId, resumeIndex, bulkReveal: pending.bulkReveal };
+    return {
+      kind: "resume",
+      sku,
+      packs,
+      purchaseId: result.purchaseId,
+      resumeIndex,
+      bulkReveal: pending.bulkReveal,
+      openedCount: pending.openedCount ?? 0,
+    };
   } catch (err) {
     if (err instanceof NetworkError) return { kind: "unknown" };
     // A definite server error (e.g. a stale key the server no longer recognizes) — nothing to

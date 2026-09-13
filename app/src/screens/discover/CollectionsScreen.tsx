@@ -1,4 +1,4 @@
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -8,6 +8,7 @@ import { CardFace } from "../../components/CardFace";
 import { WatchDial } from "../../components/WatchDial";
 import { itemArtGradient } from "../../content/cardArt";
 import { useCollectionsViewModel, type CatalogCollectionGroup } from "../../viewmodels/useCollectionsViewModel";
+import { useManualRefresh } from "../../hooks/useManualRefresh";
 import { useTabBarClearance } from "../../navigation/tabBarVisibility";
 import { colors, ink, typography } from "../../theme/tokens";
 import { collections as copy, discoverCategory as categoryCopy } from "../../content/copy";
@@ -30,6 +31,7 @@ export function CollectionsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const vm = useCollectionsViewModel();
+  const { isRefreshing, refresh } = useManualRefresh(vm.refetch);
   const tabBarClearance = useTabBarClearance();
 
   return (
@@ -52,6 +54,7 @@ export function CollectionsScreen() {
           data={vm.groups}
           keyExtractor={(g: CatalogCollectionGroup) => g.key}
           contentContainerStyle={[styles.list, { paddingBottom: tabBarClearance }]}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
           ListEmptyComponent={<Text style={styles.empty}>{copy.empty}</Text>}
           renderItem={({ item: group }: { item: CatalogCollectionGroup }) => {
             const primary = group.items[0];

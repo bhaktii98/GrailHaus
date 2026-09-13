@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { playSfx } from "../../../../lib/sfx";
 import type { HapticTrackConfig } from "../config/types";
 
 // Ported from card-pack-reveal-prototype/src/vault/haptics/vaultHapticTrack.ts — the original
@@ -14,6 +15,7 @@ export function createVaultHapticTrack(config: HapticTrackConfig) {
 
   return {
     onGrab() {
+      playSfx("light");
       fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
     },
     onProgress(progress: number, dragging: boolean) {
@@ -21,6 +23,7 @@ export function createVaultHapticTrack(config: HapticTrackConfig) {
       const tick = Math.floor(progress * config.tickCount);
       if (tick !== lastTick) {
         lastTick = tick;
+        playSfx("light");
         fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
       }
     },
@@ -29,12 +32,15 @@ export function createVaultHapticTrack(config: HapticTrackConfig) {
     onCommit() {
       if (committed) return;
       committed = true;
+      playSfx("heavy");
       fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
     },
     onCardPicked() {
+      playSfx("medium");
       fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     },
     onCollected() {
+      playSfx("medium");
       fire(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     },
     reset() {

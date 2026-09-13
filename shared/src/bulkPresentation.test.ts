@@ -80,6 +80,10 @@ function sku(overrides: Partial<PackSku> = {}): PackSku {
     endsAt: null,
     stockRemaining: null,
     maxStock: null,
+    recurrenceWeekdays: null,
+    recurrenceTimeUtc: null,
+    recurrenceDurationMinutes: null,
+    phase: "live",
     ...overrides,
   };
 }

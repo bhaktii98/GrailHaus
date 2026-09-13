@@ -9,6 +9,14 @@ export interface PackRow {
   max_stock: number | null;
   goes_live_at: string | null;
   ends_at: string | null;
+  /** 0=Sunday..6=Saturday. Null/empty = not a recurring drop. */
+  recurrence_weekdays: number[] | null;
+  /** "HH:MM:SS" (pg's `time` type), UTC. */
+  recurrence_time_utc: string | null;
+  recurrence_duration_minutes: number | null;
+  /** Bookkeeping only — when `stock_remaining` was last reset for a new occurrence. Never
+   * surfaced to a client; see packs.service.ts's `applyRecurringDropWindow`. */
+  recurrence_last_reset_at: string | null;
 }
 
 export interface ItemRow {

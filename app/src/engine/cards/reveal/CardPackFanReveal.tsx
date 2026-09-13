@@ -21,6 +21,8 @@ export function CardPackFanReveal({
   sku,
   compressed,
   autoAdvance,
+  initialOpenedCount,
+  onProgress,
   onDone,
 }: {
   items: ItemDetail[];
@@ -33,6 +35,9 @@ export function CardPackFanReveal({
    * purchase. See HoldToOpenFanReveal's own doc comment — this is what makes 50 cards across 10
    * packs practical without requiring 50 taps. */
   autoAdvance?: boolean;
+  /** Passed straight through — see HoldToOpenFanReveal's own doc comment. */
+  initialOpenedCount?: number;
+  onProgress?: (pulledCount: number) => void;
   onDone: () => void;
 }) {
   const deck = useMemo(() => adaptItemDetailsToCardPackDeck(items, sku), [items, sku]);
@@ -55,6 +60,8 @@ export function CardPackFanReveal({
       }}
       compressed={compressed}
       autoAdvance={autoAdvance}
+      initialOpenedCount={initialOpenedCount}
+      onProgress={onProgress}
       onDone={onDone}
     />
   );

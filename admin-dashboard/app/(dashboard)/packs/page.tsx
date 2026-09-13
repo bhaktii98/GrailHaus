@@ -17,8 +17,9 @@ async function listPacks() {
     item_count: number;
     stock_remaining: number | null;
     goes_live_at: string | null;
+    recurrence_weekdays: number[] | null;
   }>(
-    "select id, category, tier, name, price_cents, item_count, stock_remaining, goes_live_at from public.packs order by category, price_cents"
+    "select id, category, tier, name, price_cents, item_count, stock_remaining, goes_live_at, recurrence_weekdays from public.packs order by category, price_cents"
   );
   return rows;
 }
@@ -71,11 +72,13 @@ export default async function PacksPage() {
                         <TdNum>{pack.item_count}</TdNum>
                         <TdNum>{pack.stock_remaining ?? "—"}</TdNum>
                         <TdNum>
-                          {pack.goes_live_at
-                            ? new Date(pack.goes_live_at) > new Date()
-                              ? `Live ${new Date(pack.goes_live_at).toLocaleString()}`
-                              : "Drop — live"
-                            : "Evergreen"}
+                          {pack.recurrence_weekdays && pack.recurrence_weekdays.length > 0
+                            ? "Recurring drop"
+                            : pack.goes_live_at
+                              ? new Date(pack.goes_live_at) > new Date()
+                                ? `Live ${new Date(pack.goes_live_at).toLocaleString()}`
+                                : "Drop — live"
+                              : "Evergreen"}
                         </TdNum>
                         <td className="border-t border-border px-4 py-3">
                           <Link href={`/packs/${pack.id}`} className="text-sm font-medium text-accent hover:underline">

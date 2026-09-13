@@ -1,4 +1,5 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Image, Pressable, RefreshControl, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,7 +10,8 @@ import { useHideTabBarOnScroll, useTabBarClearance } from "../../navigation/tabB
 import { useSessionViewModel } from "../../viewmodels/useSessionViewModel";
 import { useDiscoverHubViewModel } from "../../viewmodels/useDiscoverHubViewModel";
 import { useCollectionsViewModel } from "../../viewmodels/useCollectionsViewModel";
-import { colors, fonts, typography } from "../../theme/tokens";
+import { useManualRefresh } from "../../hooks/useManualRefresh";
+import { colors, fonts, ink, typography } from "../../theme/tokens";
 import { discover as copy } from "../../content/copy";
 import type { DiscoverStackParamList } from "../../navigation/DiscoverStack";
 
@@ -84,8 +86,16 @@ export function DiscoverScreen() {
   const session = useSessionViewModel();
   const hub = useDiscoverHubViewModel();
   const collections = useCollectionsViewModel();
+  const { isRefreshing, refresh } = useManualRefresh(() => Promise.all([hub.refetch(), collections.refetch()]));
   const scrollHandler = useHideTabBarOnScroll();
   const tabBarClearance = useTabBarClearance();
+  // Sticky header: pinned outside the scroll content via `headerOverlay`'s own position:absolute,
+  // so it never scrolls away with it, and — unlike the floating pill tab bar — always visible
+  // regardless of scroll direction, not tied to the shared tab-bar hide/show value.
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 58);
+  function handleHeaderLayout(e: LayoutChangeEvent) {
+    setHeaderHeight(e.nativeEvent.layout.height);
+  }
 
   return (
     <View style={styles.fill}>
@@ -94,13 +104,15 @@ export function DiscoverScreen() {
         locations={[0, 0.36, 1]}
         style={styles.base}
       />
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
-        contentContainerStyle={{ paddingBottom: tabBarClearance }}
+      {/* Opaque strip behind the true status bar (battery/clock) row — see HomeScreen's own
+          statusBarCover comment for why this can't just be part of the transparent header. */}
+      <View pointerEvents="none" style={[styles.statusBarCover, { height: insets.top }]} />
+
+      <Animated.View
+        onLayout={handleHeaderLayout}
+        pointerEvents="box-none"
+        style={[styles.header, styles.headerOverlay, { paddingTop: insets.top + 12 }]}
       >
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.brandRow}>
           <Image source={require("../../../assets/logo.png")} style={styles.logo} resizeMode="contain" />
           <Text style={styles.title}>{copy.title}</Text>
@@ -111,8 +123,14 @@ export function DiscoverScreen() {
             <Text style={styles.balanceText}>{(session.balanceCents / 100).toLocaleString()}</Text>
           </View>
         )}
-      </View>
-
+      </Animated.View>
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: headerHeight, paddingBottom: tabBarClearance }}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.violetTop} colors={[colors.violetTop]} progressBackgroundColor={ink.ground} />}
+      >
       <Text style={styles.headline}>
         {copy.headlineLead}
         <Text style={styles.headlineAccent}>{copy.headlineAccent}</Text>
@@ -201,6 +219,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  // Same as HomeScreen's own headerOverlay — takes this out of the scroll flow entirely so it
+  // floats above the content rather than scrolling away with it. No background color, same as
+  // Home's: the LinearGradient wash behind both the header and the scroll content already reads
+  // as continuous, so a solid bar here would just draw a hard seam where the header ends instead.
+  headerOverlay: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 },
+  statusBarCover: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 11,
+    backgroundColor: ink.groundDeep,
   },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   logo: { width: 28, height: 28, borderRadius: 9 },

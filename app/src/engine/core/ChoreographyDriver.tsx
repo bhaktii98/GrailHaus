@@ -30,6 +30,7 @@ import { useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import { runOnJS, useAnimatedReaction, type SharedValue } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import { playSfx } from "../../lib/sfx";
 import type { HapticStep, RevealChoreography } from "./types";
 
 /** How fast an abandoned drag rewinds to sealed, in timeline-seconds per real second. From the
@@ -41,10 +42,22 @@ const SPRING_BACK_RATE = 3.2;
 const CAMERA_EASE = 0.12;
 
 const playHaptic: Record<HapticStep["kind"], () => void> = {
-  light: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}),
-  medium: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}),
-  heavy: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {}),
-  success: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
+  light: () => {
+    playSfx("light");
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  },
+  medium: () => {
+    playSfx("medium");
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  },
+  heavy: () => {
+    playSfx("heavy");
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+  },
+  success: () => {
+    playSfx("success");
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  },
 };
 
 export type ChoreographyRunState = "scrubbing" | "playing" | "settled";

@@ -69,6 +69,10 @@ function sku(): PackSku {
     endsAt: null,
     stockRemaining: null,
     maxStock: null,
+    recurrenceWeekdays: null,
+    recurrenceTimeUtc: null,
+    recurrenceDurationMinutes: null,
+    phase: "live",
   };
 }
 

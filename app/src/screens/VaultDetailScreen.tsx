@@ -57,10 +57,18 @@ export function VaultDetailScreen() {
       .slice(0, FEATURED_COUNT);
   }, [sku]);
 
+  // Gated here, before the confirm sheet ever opens — not inside handleConfirm — because that
+  // sheet is itself a native Modal, and requireAuth's own sign-in sheet is too; two Modals open
+  // at once is unreliable (especially on Android), so a guest never gets past this point without
+  // the confirm sheet opening at all. By the time handleConfirm runs, sign-in is guaranteed.
+  function handleOpenSheet() {
+    requireAuth(() => setSheetOpen(true));
+  }
+
   function handleConfirm() {
     if (!sku) return;
-    requireAuth(async () => {
-      if (isRippingRef.current) return;
+    if (isRippingRef.current) return;
+    (async () => {
       isRippingRef.current = true;
       try {
         const result = await flow.startFlow(sku);
@@ -73,7 +81,7 @@ export function VaultDetailScreen() {
       } finally {
         isRippingRef.current = false;
       }
-    });
+    })();
   }
 
   if (!sku) return <View style={styles.fill} />;
@@ -145,7 +153,7 @@ export function VaultDetailScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: actionBarPadding }]}>
-        <Pressable onPress={() => setSheetOpen(true)} style={styles.unlockButton}>
+        <Pressable onPress={handleOpenSheet} style={styles.unlockButton}>
           <Text style={styles.unlockLabel}>{copy.unlockVault}</Text>
           <View style={styles.unlockPricePill}>
             <Text style={styles.unlockPrice}>${(sku.priceCents / 100).toLocaleString()}</Text>

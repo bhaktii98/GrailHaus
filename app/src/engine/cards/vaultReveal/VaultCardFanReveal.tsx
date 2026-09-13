@@ -17,10 +17,15 @@ import { HoldToOpenFanReveal } from "../reveal/holdToOpen/HoldToOpenFanReveal";
 export function VaultCardFanReveal({
   items,
   sku,
+  initialOpenedCount,
+  onProgress,
   onDone,
 }: {
   items: PulledOwnedItem[];
   sku: PackSku;
+  /** Passed straight through — see HoldToOpenFanReveal's own doc comment. */
+  initialOpenedCount?: number;
+  onProgress?: (pulledCount: number) => void;
   onDone: () => void;
 }) {
   const deck = useMemo(() => adaptPulledItemsToVaultDeck(items, sku), [items, sku]);
@@ -45,6 +50,8 @@ export function VaultCardFanReveal({
         accentRGB: "232,207,154",
         vignetteGlow: "rgba(92,52,158,0.20)",
       }}
+      initialOpenedCount={initialOpenedCount}
+      onProgress={onProgress}
       onDone={onDone}
     />
   );
