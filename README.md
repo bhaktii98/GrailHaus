@@ -8,7 +8,7 @@ are fully shipped: **Trading Cards** and **Watches**, on one shared reveal engin
 **[Walkthrough video](https://drive.google.com/file/d/1PEOb7EJeM2MhpnlCDUaog_SHnywmjJ7c/view?usp=sharing)** ·
 **[Architecture document](https://drive.google.com/file/d/1-lOxmvauUWO2sJgS6oEDE19NGLiB66RQ/view?usp=sharing)** ·
 **[Admin dashboard](https://admin-dashboard-taupe-two-88.vercel.app)** (deployed on Vercel — magic-link login required, see [Setup](#setup)) ·
-**[Installable Android APK](https://expo.dev/artifacts/eas/k1BtTKcGK1eFzoqx-HdJGs8_HGMdU8kDtUB00Lzy3J8.apk)** (signed, standalone — wired to the live Render backend, no dev client/Metro needed; allow installs from unknown sources)
+**[Installable Android APK](https://expo.dev/accounts/bhakti3/projects/grailhaus/builds/b670b1e5-879a-41f2-9a34-6c148f932152)** (signed, standalone — wired to the live Render backend, no dev client/Metro needed; allow installs from unknown sources)
 
 ---
 
