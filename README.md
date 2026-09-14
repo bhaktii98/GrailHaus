@@ -224,7 +224,7 @@ launch timing, `dumpsys gfxinfo` for frame stats, `dumpsys meminfo` for memory. 
 | Peak memory — pack 1 | TOTAL PSS **342MB** (Graphics 67MB), mid-reveal on a single pack. |
 | Peak memory — pack 10 | TOTAL PSS **690MB** (Graphics 224MB), at the 10-pack batch summary screen. |
 | Memory after batch completes and reveal is dismissed | TOTAL PSS **695MB** — **did not drop** after returning Home; stayed at (slightly above) the pack-10 peak. See caveat below — this is a real, honest finding, not smoothed over. |
-| Hours spent on toolchain/setup vs. product | *TODO — only measurable by you.* |
+| Hours spent on toolchain/setup vs. product | **~42h total** — ~12h toolchain/setup (EAS dev-client + release APK builds, Render deploy, Supabase pooler debugging, Vercel monorepo deploy), ~30h product. Estimated from commit-session clustering across the repo's history, not a timesheet. |
 
 **Methodology caveats, stated plainly:**
 - This device's Android build (OnePlus/ColorOS) does not reliably honor `dumpsys gfxinfo <pkg> reset` scoping the way stock Android does — the "pack 10" frame percentiles above are cumulative from the same reset point through the end of the 10-pack batch (i.e. they include pack 1 single-pack traffic too), not a slice isolated to only the final pack's own frames. The pack 1 row *is* cleanly isolated (reset called immediately before that specific gesture). Directionally still useful — frame times did not degrade across the batch — but not as precise a pack-10-only slice as the brief ideally wants.
