@@ -40,16 +40,22 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "owner": "bhakti3",
     "extra": {
       "eas": {
-        "projectId": "1bed72b8-56de-425d-8d7c-1814ca44a7e0"
+        "projectId": "7c05e252-7d5b-4d42-89cb-c4bde7e4744c"
       }
-    },
-    "owner": "dangri"
+    }
   }
 }

@@ -34,16 +34,20 @@ export function PackTear2D({
   bottomColor,
   wordmark,
   badge,
+  sizeMultiplier = 1,
 }: {
   openProgress: SharedValue<number>;
   topColor: string;
   bottomColor: string;
   wordmark: string;
   badge: string;
+  /** >1 for a batch tear standing in for the whole bundle — same pack, same tear physics, just
+   * drawn bigger (see CardFlowEngine's IntroductionView, the 3D path's own `<group scale>`). */
+  sizeMultiplier?: number;
 }) {
   const { width } = useWindowDimensions();
 
-  const packW = Math.min(240, width * 0.62);
+  const packW = Math.min(240, width * 0.62) * sizeMultiplier;
   const packH = packW * (1200 / 800);
 
   const foilStyle = useAnimatedStyle(() => {

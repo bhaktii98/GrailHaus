@@ -121,12 +121,16 @@ export function CardFlowEngine({
     if (tearCompleteTimer.current) clearTimeout(tearCompleteTimer.current);
   }, []);
 
-  // Same ordering rule as cardsConfig.revealOrder (commons first, rarest last) — reimplemented
-  // here rather than called directly so `orderedItems` keeps its full `ItemDetail[]` typing
-  // instead of narrowing to the reveal engine's minimal `PulledItem` shape.
+  // Standalone pack: commons first, rarest last (cardsConfig.revealOrder's own rule,
+  // reimplemented here rather than called directly so `orderedItems` keeps its full
+  // `ItemDetail[]` typing instead of narrowing to the reveal engine's minimal `PulledItem` shape)
+  // — "Card 5 is the major tension point" only works if the grail really is last.
+  // A batch pack's `items` arrives already grouped and ordered by RevealScreen (every grail
+  // across the whole batch first, then prime, then core — see its own `batchOrderedItems`), so
+  // this just keeps that order rather than re-deriving or overriding it.
   const orderedItems = useMemo(
-    () => [...items].sort((a, b) => a.rarityTierLevel - b.rarityTierLevel),
-    [items]
+    () => (batchContext ? items : [...items].sort((a, b) => a.rarityTierLevel - b.rarityTierLevel)),
+    [items, batchContext]
   );
 
   // Real ownership math: how many of each pulled id this account held *before* this pack —
@@ -174,30 +178,24 @@ export function CardFlowEngine({
     playHapticTrack(config.hapticTrack("opening", false));
     playSfx("packTear");
     tearCompleteTimer.current = setTimeout(() => {
-      // Bulk purchase: one tear stands for the whole batch — sitting through nine more of these
-      // (plus fifty individual card reveals) isn't practical, and every pack's contents already
-      // exist regardless of how many get watched play out. So the *one* physical tear here (this
-      // is always pack index 0 — no other pack of the batch ever reaches this step, since this
-      // branch never lets one) hands straight off to the terminal batch summary: all 50 cards
-      // together, the best pull surfaced as the hero (BatchSummaryScreen), same screen
-      // "Skip to results" already jumps to mid-batch. A standalone pack is unaffected — it has
-      // no `onSkipToResults` at all, so it always falls through to the normal per-card reveal.
-      if (batchContext && onSkipToResults) {
-        onSkipToResults();
-      } else {
-        setStep("cards");
-      }
+      // Every pack of a batch — including this one — still gets the real per-card reveal
+      // (step "cards"), same as a standalone pack: same HoldToOpenFanReveal, same grail
+      // treatment, just paced by `compressed`/`autoAdvance` below once mounted. `onSkipToResults`
+      // is an explicit user choice (the "Skip to results" link on ReadyView), never something a
+      // tear triggers on its own — firing it here unconditionally for every batch pack was a bug:
+      // it skipped straight to the terminal batch summary after the very first tear, before a
+      // single card had actually been shown.
+      setStep("cards");
     }, 2500);
   }
 
   function handleCardsDone() {
-    // Mid-batch, every pack still needs its own recap + "next pack" handoff (SummaryView) —
-    // there's more of the purchase left to show. A standalone pack has nothing left to hand off
-    // to, so its own "Continue"/swipe-up on the reveal screen goes straight to the portfolio
-    // instead of a results screen the user would just have to tap through again.
-    if (batchContext) {
-      setStep("summary");
-      setPhase("summary");
+    // One reveal pass already covered the whole batch (every grail, then prime, then core,
+    // across all packs — see RevealScreen's own `batchOrderedItems`), so there's no "next pack"
+    // left to hand off to: straight to the terminal batch summary. A standalone pack instead
+    // goes to the portfolio, same as always.
+    if (batchContext && onSkipToResults) {
+      onSkipToResults();
     } else {
       onViewCollection();
     }
@@ -380,7 +378,7 @@ export function ReadyView({
 // following the phone's live tilt (see useDeviceTilt) — the foil-catches-a-highlight-as-you-turn
 // requirement (PRD §42), same idea as TiltLights but written by hand here since these two lights
 // (unlike RevealEngine's config-driven array) also carry the key light's own shadow-camera ref.
-function TiltCardLights({
+export function TiltCardLights({
   keyLightRef,
   rimLightRef,
   tilt,
@@ -452,14 +450,18 @@ function IntroductionView({
                   bottomColor={cardPackPersonality.palette.violetDeep}
                   wordmark={cardPackPersonality.copy.wordmark}
                   badge={cardPackPersonality.copy.codeBadge}
+                  sizeMultiplier={batchContext ? 1.3 : 1}
                 />
               }
             >
               {/* Real-world-scale pack (~0.068 units wide, i.e. meters) needs a much closer
                   camera and its own lighting recipe than the old placeholder's 1.4-unit plane —
                   matched to the prototype's own PackScene.tsx setup (warm key + violet rim, no
-                  flat ambient wash), not cardsConfig's generic ambient+directional pair. */}
-              <Canvas shadows camera={{ position: [0, 0.01, 0.22], fov: 35 }}>
+                  flat ambient wash), not cardsConfig's generic ambient+directional pair.
+                  A batch tear stands for the whole bundle (see the heading/body above), so the
+                  pack itself reads bigger than a standalone one — the same mesh and tear physics,
+                  just scaled up, with the camera pulled back the same proportion so framing holds. */}
+              <Canvas shadows camera={{ position: [0, 0.01, batchContext ? 0.29 : 0.22], fov: 35 }}>
                 <hemisphereLight args={["#2a1b47", "#090610", 0.7]} />
                 <directionalLight
                   ref={keyLightRef}
@@ -470,7 +472,9 @@ function IntroductionView({
                 />
                 <directionalLight ref={rimLightRef} color="#8f5cff" intensity={1.6} position={[-0.28, 0.1, -0.24]} />
                 <TiltCardLights keyLightRef={keyLightRef} rimLightRef={rimLightRef} tilt={tilt} />
-                <PackTearMesh openProgress={openProgress} />
+                <group scale={batchContext ? 1.3 : 1}>
+                  <PackTearMesh openProgress={openProgress} />
+                </group>
               </Canvas>
             </Renderer3DBoundary>
           )}

@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText } from "react-native-svg";
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSpring, withTiming, Easing } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import {
   useNavigation,
@@ -20,6 +19,7 @@ import { usePackFlowViewModel } from "../viewmodels/usePackFlowViewModel";
 import { useAuthStore } from "../state/authStore";
 import { CountdownBoxes } from "../components/Countdown";
 import { ConfirmPurchaseSheet } from "../components/ConfirmPurchaseSheet";
+import { DropTitle, LiveDot, GOLD, GOLD_DEEP, PINK } from "../components/DropTitle";
 import { fonts, ink, spacing } from "../theme/tokens";
 import { dropDetail as copy } from "../content/copy";
 import type { RootTabParamList } from "../navigation/RootTabs";
@@ -27,9 +27,6 @@ import type { AppStackParamList } from "../navigation/AppNavigator";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const GOLD = "#F6C040";
-const GOLD_DEEP = "#E0A51C";
-const PINK = "#FF3D71";
 const { width: SCREEN_W } = Dimensions.get("window");
 /** How tall the hero background image runs, measured from where the scroll content starts
  * (i.e. below the floating back/gear buttons) — not from the very top of the image itself,
@@ -72,69 +69,6 @@ function formatClaimAgo(acquiredAtIso: string): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h`;
-}
-
-/** Renders a "Series: Drop Name" title as two gradient-filled lines (plain white→grey lead-in,
- * gold payoff on its own line) — an SVG text mask, same technique the reference mockup used
- * (there via @react-native-masked-view, which this app doesn't otherwise depend on; this gets
- * the identical look off react-native-svg, already a dependency everywhere else in the app, so
- * it doesn't add a new native module just for two lines of gradient text). A name with no colon
- * renders as one plain gradient line. Closed drops skip the gradient entirely — a plain muted
- * line reads better than a gold treatment on something no longer live. */
-function DropTitle({ name, muted }: { name: string; muted?: boolean }) {
-  const splitAt = name.indexOf(":");
-  const lead = splitAt === -1 ? name : name.slice(0, splitAt + 1);
-  const payoff = splitAt === -1 ? null : name.slice(splitAt + 1).trim();
-  const svgWidth = SCREEN_W - 48;
-
-  if (muted) {
-    return (
-      <Text style={[styles.title, styles.titleMuted]}>
-        {lead}
-        {payoff ? `\n${payoff}` : ""}
-      </Text>
-    );
-  }
-
-  return (
-    <View>
-      <Svg width={svgWidth} height={44}>
-        <Defs>
-          <SvgLinearGradient id="titleLead" x1="0" y1="0" x2="1" y2="0.4">
-            <Stop offset="0" stopColor="#FFFFFF" />
-            <Stop offset="1" stopColor="#CFC6D6" />
-          </SvgLinearGradient>
-        </Defs>
-        <SvgText x="0" y="34" fontSize={35} fontFamily={fonts.black} letterSpacing={-0.5} fill="url(#titleLead)">
-          {lead}
-        </SvgText>
-      </Svg>
-      {payoff && (
-        <Svg width={svgWidth} height={44} style={{ marginTop: -6 }}>
-          <Defs>
-            <SvgLinearGradient id="titlePayoff" x1="0" y1="0" x2="1" y2="0.4">
-              <Stop offset="0" stopColor={GOLD} />
-              <Stop offset="0.5" stopColor="#FFE9A3" />
-              <Stop offset="1" stopColor="#E3A520" />
-            </SvgLinearGradient>
-          </Defs>
-          <SvgText x="0" y="34" fontSize={35} fontFamily={fonts.black} letterSpacing={-0.5} fill="url(#titlePayoff)">
-            {payoff}
-          </SvgText>
-        </Svg>
-      )}
-    </View>
-  );
-}
-
-/** The pulsing dot next to "LIVE NOW" — opacity+scale breathing loop. */
-function LiveDot() {
-  const t = useSharedValue(1);
-  useEffect(() => {
-    t.value = withRepeat(withTiming(0.35, { duration: 800, easing: Easing.inOut(Easing.quad) }), -1, true);
-  }, [t]);
-  const style = useAnimatedStyle(() => ({ opacity: t.value, transform: [{ scale: t.value }] }));
-  return <Animated.View style={[styles.liveDot, style]} />;
 }
 
 export function DropDetailScreen() {
@@ -463,27 +397,9 @@ const styles = StyleSheet.create({
   heroBottomFade: { position: "absolute", left: 0, right: 0, bottom: 0, height: 140 },
   heroContent: { paddingHorizontal: 24, paddingTop: 4 },
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: PINK,
-    shadowColor: PINK,
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 },
-  },
   eyebrow: { fontFamily: fonts.extrabold, fontSize: 11, letterSpacing: 2.86 },
   watchWrap: { flexDirection: "row", alignItems: "center", gap: 7, marginLeft: "auto" },
   viewerCount: { fontFamily: fonts.medium, fontSize: 12, color: "rgba(255,255,255,0.72)" },
-  title: {
-    fontFamily: fonts.black,
-    fontSize: 34,
-    letterSpacing: -1.02,
-    lineHeight: 36,
-    color: ink.text,
-  },
-  titleMuted: { color: "rgba(255,255,255,0.62)" },
   tagline: {
     fontFamily: fonts.medium,
     fontSize: 13.5,

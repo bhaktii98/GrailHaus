@@ -176,7 +176,7 @@ function SparklePoint({
  * starts through however long the card sits open afterward (see the call site in FanCard below),
  * so it covers both "while flipping" and "while showing" as one continuous effect rather than
  * two separate ones. */
-function GrailSparkles({ cardW, cardH }: { cardW: number; cardH: number }) {
+export function GrailSparkles({ cardW, cardH }: { cardW: number; cardH: number }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {SPARKLE_POINTS.map((p, i) => (
@@ -422,7 +422,7 @@ function Mote({
   );
 }
 
-function OpenFlourish({
+export function OpenFlourish({
   rings,
   motes,
   hex,

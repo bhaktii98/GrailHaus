@@ -102,7 +102,10 @@ export function VaultDetailScreen() {
           <Ionicons name="chevron-back" size={18} color="#F2C46B" />
         </Pressable>
         <Text style={styles.headerTier}>{tierLabel(sku)}</Text>
-        <View style={styles.iconButton} />
+        {/* Invisible — same footprint as the back button on the left so the title above stays
+            centered (this row is `justifyContent: "space-between"`), without actually drawing a
+            second box on the right. */}
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: actionBarPadding + 100 }]} showsVerticalScrollIndicator={false}>
@@ -207,6 +210,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  headerSpacer: { width: 38, height: 38 },
   headerTier: { fontFamily: "Outfit_600SemiBold", fontSize: 10, letterSpacing: 2.4, color: "rgba(242,196,107,0.7)" },
 
   scroll: { padding: 24, paddingTop: 18, gap: 22 },

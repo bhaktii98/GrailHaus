@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GrailHaus — Vault Break</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+    "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js",
+    "three/addons/exporters/OBJExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js",
+    "three/addons/exporters/GLTFExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js"
+  },
+  "integrity": {
+    "https://unpkg.com/three@0.184.0/build/three.module.js": "sha384-8FCZ1eVO6it4+pbec2aDtnTrwjWXZLJRC+MAGCIPDgsYnUrl/E0A2YlF8ioMKI/J",
+    "https://unpkg.com/three@0.184.0/build/three.core.js": "sha384-dw2ooPewaEIrAgl6oFDBmmBWCE9oW9LxRGcfwZ0hLvEprzo202wXl7vCYHRlSnOT",
+    "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js": "sha384-4rziNxOBZKQ69i+w+f89KJ55TCYquwchVbByQwmaOeIOXdOU2PLDn3kOfXHwIJC9",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js": "sha384-nbwtoZENJD3Vq+ACK0CuGQdPMuDWHkamC2KJD70EV5nfg6jQjfppKOea07YJN+N3",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js": "sha384-VofkvpG6HERhFCYbsUOHeNXBCqID2nfqkQqnVzE1jc/oPcz+qJ13ADdXH08hE+cQ"
+  }
+}
+</script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#05030a;-webkit-user-select:none;user-select:none}
+  three-d-stage:not(:defined){visibility:hidden}
+  three-d-stage{display:block;width:100vw;height:100vh;touch-action:none;background:transparent}
+  #vign{position:fixed;inset:0;pointer-events:none;transition:opacity .8s;
+    background:radial-gradient(52% 40% at 50% 38%, rgba(92,52,158,.20), rgba(5,3,10,0) 64%),
+               radial-gradient(120% 90% at 50% 116%, rgba(232,207,162,.07), rgba(5,3,10,0) 58%),
+               radial-gradient(130% 110% at 50% 50%, rgba(5,3,10,0) 42%, rgba(3,2,6,.86) 100%)}
+  #frame{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:space-between;
+    padding:max(24px,env(safe-area-inset-top)) 24px max(32px,env(safe-area-inset-bottom));
+    pointer-events:none;font-family:"Cormorant Garamond",Georgia,serif;color:#f4ece0}
+  .kicker{display:flex;align-items:center;gap:10px;font:600 10px/1 ui-monospace,Menlo,monospace;
+    letter-spacing:.34em;color:#b99b57;text-transform:uppercase}
+  .kicker span.rule{width:26px;height:1px;background:rgba(232,207,162,.5)}
+  h1{margin:10px 0 0;font-size:clamp(26px,7vw,34px);font-weight:500;letter-spacing:.03em}
+  h1 em{font-style:italic;color:#e8cf9a}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;
+    font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#9d8fb8;letter-spacing:.14em}
+  .meta i{font-style:normal;color:rgba(232,207,162,.45)}
+  #hint{align-self:center;font:600 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.26em;
+    text-transform:uppercase;color:rgba(244,236,224,.5);transition:opacity .45s;text-align:center}
+  #card-note{position:fixed;left:24px;
+    bottom:calc(max(32px,env(safe-area-inset-bottom)) + 56px);text-align:left;
+    opacity:0;transition:opacity .6s;pointer-events:none;
+    font-family:"Cormorant Garamond",Georgia,serif;color:#f4ece0}
+  #card-note[data-on]{opacity:1}
+  #card-note .r{font:600 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.32em;color:#e8cf9a}
+  #card-note .n{margin-top:6px;font-size:20px;letter-spacing:.02em}
+  #card-note .v{margin-top:4px;font:400 11px/1 ui-monospace,Menlo,monospace;
+    letter-spacing:.16em;color:rgba(157,143,184,.9)}
+  .pill{position:fixed;padding:11px 20px;border:1px solid rgba(232,207,162,.4);border-radius:2px;
+    background:rgba(16,8,32,.76);color:#f4ece0;font:600 10px/1 ui-monospace,Menlo,monospace;
+    letter-spacing:.22em;text-transform:uppercase;cursor:pointer;backdrop-filter:blur(10px);
+    transition:opacity .4s,border-color .25s,background .25s}
+  .pill:hover{border-color:rgba(232,207,162,.8);background:rgba(28,14,52,.86)}
+  .pill[data-hidden]{opacity:0;pointer-events:none}
+  #mode{right:24px;top:max(24px,env(safe-area-inset-top))}
+  #again{left:24px;bottom:max(32px,env(safe-area-inset-bottom))}
+  #collect{left:50%;transform:translateX(-50%);bottom:max(32px,env(safe-area-inset-bottom));
+    border-color:rgba(232,207,162,.7);background:rgba(232,207,162,.1);color:#fbf0d4}
+  a{color:#e8cf9a}a:hover{color:#fbf0d4}
+</style>
+</head>
+<body>
+<three-d-stage name="grailhaus-vault-break" background="transparent"></three-d-stage>
+<div id="vign"></div>
+<div id="frame">
+  <div>
+    <div class="kicker"><span class="rule"></span>Tier II · Sealed</div>
+    <h1>Vault <em>Break</em></h1>
+    <div class="meta"><span>6 CARDS</span><i>/</i><span>1 PRIME OR ABOVE</span><i>/</i><span>SERIES I · S·1a</span></div>
+  </div>
+  <div></div>
+  <div id="hint">Drag along the seam</div>
+</div>
+<div id="card-note"><div class="r"></div><div class="n"></div><div class="v"></div></div>
+<button class="pill" id="mode">Orbit</button>
+<button class="pill" id="again" data-hidden>Reseal</button>
+<button class="pill" id="collect" data-hidden>Add to collection</button>
+<script src="./three-d-stage.js"></script>
+<script type="module">
+  import * as THREE from 'three';
+  import { buildPack } from './rip-pack.js';
+  import { TIERS } from './tiers.js';
+
+  if (document.fonts) { try { await document.fonts.ready; } catch (e) {} }
+
+  const stage = document.querySelector('three-d-stage');
+  await stage.ready;
+
+  const logo = await new Promise((res) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => res(null);
+    im.src = './uploads/grailhaus logo.png';
+  });
+
+  const cfg = TIERS['vault-break'];
+  const pack = buildPack(logo, cfg);
+  const reveal = pack.reveal;
+  stage.setObject(pack.group);
+
+  // ---- private collector space -----------------------------------------
+  const scene = stage._scene;
+  scene.children.filter((o) => o.isLight).forEach((l) => scene.remove(l));
+
+  const floorY = -pack.size.H / 2;
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.62, 0.62),
+    new THREE.MeshStandardMaterial({
+      name: 'vaultFloor', color: 0x050310, roughness: 0.58, metalness: 0.22,
+    }),
+  );
+  floor.name = 'vaultFloor';
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = floorY - 0.0004;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const backWall = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 0.62),
+    new THREE.MeshStandardMaterial({ name: 'vaultWall', color: 0x040209, roughness: 0.92, metalness: 0.05 }),
+  );
+  backWall.name = 'vaultWall';
+  backWall.position.set(0, floorY + 0.24, -0.26);
+  scene.add(backWall);
+
+  // key: warm champagne, low and raking so satin foil separates from plum
+  const key = new THREE.DirectionalLight(0xfff3dc, 2.0);
+  key.position.set(0.17, 0.30, 0.30);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.bias = -0.0004;
+  Object.assign(key.shadow.camera, { left: -0.16, right: 0.16, top: 0.16, bottom: -0.16 });
+  key.shadow.camera.updateProjectionMatrix();
+  scene.add(key);
+
+  const rim = new THREE.DirectionalLight(0x7d4ce0, 1.15);   // violet ambient wash
+  rim.position.set(-0.30, 0.12, -0.22);
+  scene.add(rim);
+
+  const kick = new THREE.DirectionalLight(0xe8cf9a, 0.5);   // champagne edge kick
+  kick.position.set(-0.16, -0.08, 0.26);
+  scene.add(kick);
+
+  const hemi = new THREE.HemisphereLight(0x231540, 0x05030a, 0.42);
+  scene.add(hemi);
+
+  // focused spot for the rarity moment and card inspection
+  const spot = new THREE.SpotLight(0xfff2d8, 0, 0.6, 0.5, 0.92, 1.2);
+  spot.position.set(0.02, 0.16, 0.16);
+  scene.add(spot, spot.target);
+
+  if (stage._ground) stage._ground.material.opacity = 0.34;
+
+  const controls = stage._controls;
+  const camera = stage._camera;
+  const CENTER_Y = 0.0;
+  const BASE_Z = 0.214;
+  const camAim = { x: 0, y: CENTER_Y + 0.006, z: BASE_Z, tx: 0, ty: CENTER_Y };
+  const reframe = () => {
+    camera.position.set(0, CENTER_Y + 0.006, BASE_Z);
+    controls.target.set(0, CENTER_Y, 0);
+    controls.update();
+  };
+  reframe();
+
+  let orbit = false;
+  const modeBtn = document.getElementById('mode');
+  const setMode = (on) => {
+    orbit = on;
+    controls.enableRotate = on;
+    controls.enableZoom = on;
+    controls.enablePan = on;
+    modeBtn.textContent = on ? 'Close orbit' : 'Orbit';
+    if (stage._note) stage._note.textContent = on ? 'Drag to orbit · scroll to zoom' : '';
+    if (!on) reframe();
+  };
+  modeBtn.addEventListener('click', () => setMode(!orbit));
+  setMode(false);
+
+  // ================= tear physics — Tier 1 model, tier-tuned =============
+  const TEAR = cfg.tear;
+  let progress = 0, dragging = false, vel = 0, energy = 0, touching = 0;
+  const again = document.getElementById('again');
+  const collect = document.getElementById('collect');
+  const hint = document.getElementById('hint');
+  const note = document.getElementById('card-note');
+  const buzz = (ms) => navigator.vibrate && navigator.vibrate(ms);
+  let ticks = 0;
+
+  const cutSpan = () => {
+    const p = new THREE.Vector3();
+    const px = (x) => {
+      p.set(x, pack.seamY, 0).applyMatrix4(pack.group.matrixWorld).project(camera);
+      return (p.x * 0.5 + 0.5) * stage.clientWidth;
+    };
+    pack.group.updateMatrixWorld();
+    const L = px(-pack.size.W / 2), R = px(pack.size.W / 2);
+    return { L, span: Math.max(40, R - L) };
+  };
+  const cutAt = (clientX) => {
+    const rect = stage.getBoundingClientRect();
+    const { L, span } = cutSpan();
+    return Math.min(1, Math.max(0, (clientX - rect.left - L) / span));
+  };
+  const cutRate = () => 1 / Math.max(40, cutSpan().span);
+  const spring = { live: false, target: 0, v: 0 };
+
+  let pid = null, lastX = 0, lastT = 0, grabStart = 0;
+  const onTearStrip = (clientY) => {
+    const rect = stage.getBoundingClientRect();
+    const p = new THREE.Vector3();
+    const py = (y) => {
+      p.set(0, y, 0).applyMatrix4(pack.group.matrixWorld).project(camera);
+      return (1 - (p.y * 0.5 + 0.5)) * stage.clientHeight;
+    };
+    pack.group.updateMatrixWorld();
+    const top = py(pack.size.H / 2), seam = py(pack.seamY);
+    const pad = Math.max(14, (seam - top) * 0.5);
+    const y = clientY - rect.top;
+    return y >= top - pad && y <= seam + pad;
+  };
+
+  // ---- inspection routing ----------------------------------------------
+  const ndc = new THREE.Vector2();
+  const toNdc = (e) => {
+    const r = stage.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    return ndc;
+  };
+  let heroPid = null;
+  const rarityCopy = (c) => {
+    note.querySelector('.r').textContent = `${c.data.rarity} · ${c.data.edition}`;
+    note.querySelector('.n').textContent = c.data.name;
+    note.querySelector('.v').textContent = `${c.data.value} · ${c.data.serial}`;
+    note.setAttribute('data-on', '');
+  };
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (orbit) return;
+    if (reveal.state.ready) {
+      const i = reveal.pick(toNdc(e), camera);
+      if (i >= 0) {
+        note.removeAttribute('data-on');
+        reveal.setHero(i);
+        rarityCopy(reveal.cards[i]);
+        collect.removeAttribute('data-hidden');
+        heroPid = e.pointerId; lastX = e.clientX; lastT = e.clientY;
+        stage.setPointerCapture(heroPid);
+        buzz(8);
+      } else if (reveal.state.hero >= 0) {
+        reveal.setHero(-1);
+        note.removeAttribute('data-on');
+        collect.setAttribute('data-hidden', '');
+      }
+      return;
+    }
+    if (progress >= 1) return;
+    if (!onTearStrip(e.clientY)) return;
+    pid = e.pointerId; lastX = e.clientX; lastT = e.timeStamp;
+    dragging = true; vel = 0; touching = 1;
+    spring.live = false; spring.v = 0;
+    grabStart = cutAt(e.clientX);
+    stage.setPointerCapture(pid);
+    buzz(6);
+  });
+
+  stage.addEventListener('pointermove', (e) => {
+    if (heroPid !== null && e.pointerId === heroPid) {
+      const r = stage.getBoundingClientRect();
+      reveal.dragHero((e.clientX - lastX) / r.width, (e.clientY - lastT) / r.height);
+      lastX = e.clientX; lastT = e.clientY;
+      return;
+    }
+    if (e.pointerId !== pid) return;
+    const dt = Math.max(1, e.timeStamp - lastT);
+    vel = (e.clientX - lastX) / dt;
+    lastX = e.clientX; lastT = e.timeStamp;
+    // 1:1 tracking, after a short stretch the heavier foil takes up
+    const raw = Math.max(0, cutAt(e.clientX) - grabStart);
+    const S = TEAR.stretch;
+    progress = S > 0 ? Math.min(1, Math.max(0, (raw - S) / (1 - S))) : Math.min(1, raw);
+    pack.setStretch(S > 0 ? Math.min(1, raw / S) * (raw < S ? 1 : 0.25) : 0, grabStart + raw);
+    energy = Math.min(1, energy + Math.abs(vel) * 0.06);
+    const t = Math.floor(progress * 16);
+    if (t !== ticks) { ticks = t; buzz(5); }
+  });
+
+  const up = (e) => {
+    if (heroPid !== null && e.pointerId === heroPid) {
+      heroPid = null; reveal.endDrag();
+      return;
+    }
+    if (e.pointerId !== pid) return;
+    pid = null; dragging = false; pack.setStretch(0, 0);
+    const flick = e.timeStamp - lastT > 90 ? 0 : vel;
+    spring.v = flick * cutRate() * 1000;
+    const reach = Math.max(0.12, 1 - grabStart);
+    spring.target = (progress > TEAR.releaseFrac * reach || flick > 0.95) ? 1 : 0;
+    spring.live = true;
+    if (spring.target === 1) buzz(38);
+  };
+  stage.addEventListener('pointerup', up);
+  stage.addEventListener('pointercancel', up);
+  stage.addEventListener('wheel', (e) => {
+    if (reveal.state.hero >= 0 && !orbit) { reveal.zoomHero(e.deltaY * 0.0012); e.preventDefault(); }
+  }, { passive: false });
+  stage.addEventListener('dblclick', () => { if (reveal.state.hero >= 0) reveal.flipHero(); });
+
+  again.addEventListener('click', () => {
+    spring.live = false; spring.v = 0; spring.target = 0;
+    progress = 0; shown = 0;
+    reveal.reset();
+    again.setAttribute('data-hidden', '');
+    collect.setAttribute('data-hidden', '');
+    note.removeAttribute('data-on');
+    hint.textContent = 'Drag along the seam';
+    hint.style.opacity = 1;
+  });
+  collect.addEventListener('click', () => {
+    const c = reveal.heroCard;
+    if (!c) return;
+    collect.textContent = 'Added · ' + c.data.serial;
+    buzz(20);
+    setTimeout(() => { collect.textContent = 'Add to collection'; }, 2200);
+  });
+
+  Object.assign(window, { __pack: pack, __reveal: reveal, __set: (p) => { progress = p; shown = p; } });
+
+  // ---- render loop ------------------------------------------------------
+  const renderer = stage._renderer;
+  renderer.setAnimationLoop(null);
+  const paint = () => {
+    const r = stage.getBoundingClientRect();
+    const w = Math.round(r.width) || innerWidth || 924;
+    const h2 = Math.round(r.height) || innerHeight || 540;
+    const cur = renderer.getSize(new THREE.Vector2());
+    if (Math.abs(cur.x - w) > 0.5 || Math.abs(cur.y - h2) > 0.5) {
+      renderer.setSize(w, h2, true);
+      camera.aspect = w / h2;
+      camera.updateProjectionMatrix();
+    }
+    renderer.render(scene, camera);
+    return Math.abs(cur.x - w) < 0.5 && Math.abs(cur.y - h2) < 0.5;
+  };
+  [0, 50, 150, 400, 900].forEach((t) => setTimeout(paint, t));
+  paint();
+  addEventListener('resize', paint);
+  document.addEventListener('visibilitychange', paint);
+  new ResizeObserver(paint).observe(stage);
+  if (document.fonts) document.fonts.ready.then(paint);
+
+  const vign = document.getElementById('vign');
+  let shown = 0, prev = performance.now(), lastPhase = '';
+  (function frame(now) {
+    const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+    if (dragging) {
+      shown = progress;
+    } else if (spring.live) {
+      const k = TEAR.springK, c = 2 * Math.sqrt(TEAR.springK) * TEAR.damping;
+      spring.v += ((spring.target - shown) * k - spring.v * c) * dt;
+      shown += spring.v * dt;
+      if (Math.abs(spring.target - shown) < 0.002 && Math.abs(spring.v) < 0.02) {
+        shown = spring.target; spring.v = 0; spring.live = false;
+      }
+      shown = Math.min(1, Math.max(0, shown));
+      progress = shown;
+    }
+    energy *= Math.pow(0.02, dt);
+    touching *= Math.pow(0.05, dt);
+    pack.react(dt, dragging ? Math.max(-1, Math.min(1, vel * 6)) : 0, dragging);
+    pack.setProgress(shown);
+    pack.setTime(now / 1000, dragging ? 0.5 + energy : energy);
+
+    const st = reveal.state;
+    if (shown > 0.96) again.removeAttribute('data-hidden');
+
+    // ---- lighting choreography ----------------------------------------
+    const dim = st.dim;
+    const phaseLight = st.hero >= 0 ? 2.4
+      : st.ready ? 2.9
+        : st.running ? 2.6
+          : 2.0 + touching * 0.35 + shown * 0.5;
+    key.intensity += (phaseLight * (1 - dim * 0.42) - key.intensity) * Math.min(1, dt * 3);
+    rim.intensity += ((1.15 - dim * 0.5 + energy * 0.25) - rim.intensity) * Math.min(1, dt * 3);
+    kick.intensity += ((0.5 + shown * 0.3 + touching * 0.2) - kick.intensity) * Math.min(1, dt * 3);
+    hemi.intensity += ((0.42 - dim * 0.2) - hemi.intensity) * Math.min(1, dt * 3);
+    const spotWant = st.hero >= 0 ? 3.4 : dim > 0.05 ? 5.0 * dim : 0;
+    spot.intensity += (spotWant - spot.intensity) * Math.min(1, dt * 3.2);
+    spot.target.position.lerp(st.focus, Math.min(1, dt * 4));
+    if (st.hero >= 0) spot.position.set(0.012, st.focus.y + 0.05, st.focus.z + 0.19);
+    else spot.position.set(st.focus.x * 0.5 + 0.02, st.focus.y + 0.14, st.focus.z + 0.14);
+    vign.style.opacity = String(1 + dim * 0.5);
+
+    // ---- camera choreography ------------------------------------------
+    if (!orbit) {
+      if (st.hero >= 0) {
+        const h = reveal.heroCard.obj.position;
+        camAim.z = 0.204; camAim.y = h.y * 0.9; camAim.x = 0;
+        camAim.tx = 0; camAim.ty = h.y * 0.92;
+      } else if (st.phase === 'notice' || st.phase === 'approach'
+        || st.phase === 'reveal' || st.phase === 'present') {
+        // the push-in is tied to the room darkening, so it reads as one move
+        camAim.z = 0.266 - st.dim * 0.03;
+        camAim.x = st.focus.x * 0.42;
+        camAim.y = st.focus.y * 0.82 + 0.004;
+        camAim.tx = st.focus.x * 0.5; camAim.ty = st.focus.y * 0.88;
+      } else if (st.running || st.ready) {
+        camAim.z = 0.264; camAim.x = 0;
+        camAim.y = CENTER_Y + 0.022; camAim.tx = 0; camAim.ty = CENTER_Y + 0.022;
+      } else {
+        camAim.z = BASE_Z - shown * 0.014;
+        camAim.x = 0;
+        camAim.y = CENTER_Y + 0.006 + shown * 0.012;
+        camAim.tx = 0; camAim.ty = CENTER_Y + shown * 0.012;
+      }
+      const slow = st.phase === 'notice' || st.phase === 'approach'
+        || st.phase === 'reveal' || st.phase === 'present';
+      const s = Math.min(1, dt * (slow ? 1.1 : 2.6));
+      camera.position.x += (camAim.x - camera.position.x) * s;
+      camera.position.y += (camAim.y - camera.position.y) * s;
+      camera.position.z += (camAim.z - camera.position.z) * s;
+      controls.target.set(
+        controls.target.x + (camAim.tx - controls.target.x) * s,
+        controls.target.y + (camAim.ty - controls.target.y) * s,
+        0,
+      );
+      controls.update();
+    }
+
+    // ---- prompts -------------------------------------------------------
+    if (st.phase !== lastPhase) {
+      lastPhase = st.phase;
+      if (st.phase === 'present') {
+        const g = reveal.cards.find((c) => c.isGrail);
+        if (g) rarityCopy(g);
+      }
+      if (st.phase === 'ready') {
+        hint.textContent = 'Tap a card to inspect';
+        hint.style.opacity = 1;
+      } else if (st.running) {
+        hint.style.opacity = 0;
+      }
+    }
+    if (!st.running && !st.ready) hint.style.opacity = String(1 - shown * 1.6);
+    else if (st.ready) hint.style.opacity = st.hero >= 0 ? '0' : '1';
+
+    paint();
+    if (orbit) controls.update();
+    requestAnimationFrame(frame);
+  })(prev);
+</script>
+</body>
+</html>

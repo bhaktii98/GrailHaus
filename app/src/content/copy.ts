@@ -185,6 +185,7 @@ export const home = {
   },
   featuredDrop: {
     eyebrow: "FEATURED DROP · LIVE",
+    eyebrowSoon: "FEATURED DROP · SOON",
     left: (remaining: number, max: number) => `${remaining} / ${max}`,
     // Static placeholder — no live viewer-count backend exists yet (same call as the
     // Drop screens' claims feed: match the mockup's number rather than invent one).
@@ -619,6 +620,10 @@ export const bulkRun = {
     body: "Every card is already pulled and yours. We'll show you the chase first.",
     begin: "BEGIN THE HUNT",
     skip: "Skip to results",
+    /** The pouch's own hint while sealed — a horizontal drag, not the single pack's swipe up. */
+    dragHint: "DRAG THE ZIP PULL ACROSS THE SEAM",
+    /** Shown for the beat between the seam completing and every pack finishing its rise. */
+    spillingHint: "TEN PACKS, ALL TORN",
   },
   grail: {
     eyebrow: "GRAIL HUNT",

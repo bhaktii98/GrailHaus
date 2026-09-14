@@ -79,8 +79,23 @@ export function useHomeViewModel() {
   }, [packsQuery.data, categories]);
   const evergreenByCategory = useStableValue(evergreenByCategoryRaw);
 
-  const featuredDropRaw = useMemo(() => drops.find((d) => d.phase === "live") ?? null, [drops]);
-  const upcomingDropsRaw = useMemo(() => drops.filter((d) => d.phase === "soon"), [drops]);
+  // A "soon" drop is promoted to Featured too, not just "live" ones — the banner should always
+  // have something to show (with a real countdown, to goesLiveAt while soon or endsAt while
+  // live) rather than only appearing once a drop happens to already be open. Ties among several
+  // "soon" drops go to whichever goes live soonest.
+  const featuredDropRaw = useMemo(() => {
+    const live = drops.find((d) => d.phase === "live");
+    if (live) return live;
+    const soon = drops
+      .filter((d) => d.phase === "soon" && d.sku.goesLiveAt != null)
+      .sort((a, b) => new Date(a.sku.goesLiveAt!).getTime() - new Date(b.sku.goesLiveAt!).getTime());
+    return soon[0] ?? null;
+  }, [drops]);
+  // Whichever drop is already shown as Featured above doesn't also get a duplicate row here.
+  const upcomingDropsRaw = useMemo(
+    () => drops.filter((d) => d.phase === "soon" && d.sku.id !== featuredDropRaw?.sku.id),
+    [drops, featuredDropRaw]
+  );
   const featuredDrop = useStableValue(featuredDropRaw);
   const upcomingDrops = useStableValue(upcomingDropsRaw);
 

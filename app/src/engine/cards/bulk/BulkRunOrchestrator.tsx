@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import Animated, { Easing, FadeIn, FadeOut } from "react-native-reanimated";
 import type { BatchRevealState, PackSku, PulledOwnedItem, RevealStage } from "@grailhaus/shared";
 import { groupBulkRun, summarizeBulkRun } from "@grailhaus/shared";
+import type { CategoryRevealConfig } from "../../core/types";
 import { track } from "../../../lib/analytics";
 import { tierRevealIdentity } from "./tierPersonality";
 import { RunIntroStage } from "./RunIntroStage";
@@ -31,6 +32,7 @@ import { CoreListStage } from "./CoreListStage";
 export function BulkRunOrchestrator({
   sku,
   packs,
+  gesture,
   bulkReveal,
   onGoToStage,
   onAdvanceStage,
@@ -41,6 +43,9 @@ export function BulkRunOrchestrator({
   /** The authoritative per-pack structure, exactly as the purchase produced it. Read, never
    * mutated — the grouping below returns new arrays over the same item references. */
   packs: PulledOwnedItem[][];
+  /** The tier's admin-configured gesture, same value CardFlowEngine's own tear reads — the intro
+   * stage's own tear needs it too. */
+  gesture: CategoryRevealConfig["gesture"];
   bulkReveal: BatchRevealState;
   onGoToStage: (stage: RevealStage) => void;
   onAdvanceStage: () => void;
@@ -119,6 +124,7 @@ export function BulkRunOrchestrator({
           <RunIntroStage
             sku={sku}
             packCount={packs.length}
+            gesture={gesture}
             onBegin={() => onGoToStage("grail_hunt")}
             onSkip={onSkipToResults}
           />

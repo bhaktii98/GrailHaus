@@ -35,6 +35,7 @@ export function BlackLabelFlowEngine({
   onGoHome,
   onViewCollection,
   onSkipToResults,
+  onNextPack,
   isRipAgainWorking,
 }: {
   sku: PackSku;
@@ -45,6 +46,7 @@ export function BlackLabelFlowEngine({
   onGoHome: () => void;
   onViewCollection: () => void;
   onSkipToResults?: () => void;
+  onNextPack?: () => void;
   isRipAgainWorking: boolean;
 }) {
   const setPhase = usePackFlowStore((s) => s.setPhase);
@@ -61,8 +63,13 @@ export function BlackLabelFlowEngine({
   );
   const [visibleStatusRows, setVisibleStatusRows] = useState(0);
 
-  // Same commons-first ordering as CardFlowEngine.orderedItems.
-  const orderedItems = useMemo(() => [...items].sort((a, b) => a.rarityTierLevel - b.rarityTierLevel), [items]);
+  // Same ordering rule as CardFlowEngine.orderedItems — commons-first for a standalone pack; a
+  // batch pack's `items` already arrives grouped grail-then-prime-then-core across the whole
+  // batch (see RevealScreen's own `batchOrderedItems`), so this keeps that order as-is.
+  const orderedItems = useMemo(
+    () => (batchContext ? items : [...items].sort((a, b) => a.rarityTierLevel - b.rarityTierLevel)),
+    [items, batchContext]
+  );
 
   // Same real-ownership math as CardFlowEngine: how many of each pulled id this account held
   // *before* this pack (`owned` already includes this pull's own copies).
@@ -98,23 +105,28 @@ export function BlackLabelFlowEngine({
 
   function handleTearComplete() {
     playSfx("packTear");
-    // Bulk purchase: same fix as CardFlowEngine's own handleTearComplete — one tear stands for
-    // the whole batch (every pack's contents already exist regardless of how many get watched),
-    // so it hands straight off to the terminal batch summary instead of this pack's own 5-card
-    // reveal. A standalone purchase has no `onSkipToResults` and falls through unchanged.
+    // Every pack of a batch still gets its own fanned reveal, same as a standalone pack —
+    // `onSkipToResults` is the explicit "Skip to results" link on ReadyView, never something a
+    // tear fires on its own (this was previously firing unconditionally for every batch pack,
+    // skipping the reveal entirely after the very first tear — see CardFlowEngine's own fix).
+    setStep("cards");
+  }
+
+  // Mid-batch, this pack still needs its own recap + "next pack" handoff (SummaryView) — there's
+  // more of the purchase left to show. A standalone pack has nothing left to hand off to, so its
+  // own reveal goes straight to the portfolio instead of a results screen the user would just
+  // have to tap through again. (Previously always went to the portfolio — a real bug that ended
+  // a batch run after pack one's own reveal, before packs 2-10 were ever shown.)
+  function handleCardsDone() {
+    // One reveal pass already covered the whole batch (every grail, then prime, then core,
+    // across all packs — see RevealScreen's own `batchOrderedItems`), so there's no "next pack"
+    // left to hand off to: straight to the terminal batch summary. A standalone pack instead
+    // goes to the portfolio, same as always.
     if (batchContext && onSkipToResults) {
       onSkipToResults();
     } else {
-      setStep("cards");
+      onViewCollection();
     }
-  }
-
-  // A standalone pack's own reveal goes straight to the portfolio instead of the results screen
-  // (SummaryView) once it's done — a batch pack never reaches "cards" at all now (see
-  // handleTearComplete above), so this only ever fires for the standalone case in practice; kept
-  // simple rather than branching on batchContext for a path it can't actually take.
-  function handleCardsDone() {
-    onViewCollection();
   }
 
   if (step === "processing") {
@@ -159,6 +171,8 @@ export function BlackLabelFlowEngine({
       sku={sku}
       items={orderedItems}
       priorCountById={priorCountById}
+      batchContext={batchContext}
+      onNextPack={onNextPack}
       onRipAgain={onRipAgain}
       onGoHome={onGoHome}
       onViewCollection={onViewCollection}

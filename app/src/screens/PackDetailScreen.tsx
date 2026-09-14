@@ -108,7 +108,10 @@ export function PackDetailScreen() {
           <Ionicons name="chevron-back" size={18} color="#fff" />
         </Pressable>
         <Text style={styles.headerTier}>{tierLabel(sku)}</Text>
-        <View style={styles.iconButton} />
+        {/* Invisible — same footprint as the back button on the left so the title above stays
+            centered (this row is `justifyContent: "space-between"`), without actually drawing a
+            second box on the right. */}
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
@@ -194,6 +197,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  headerSpacer: { width: 38, height: 38 },
   headerTier: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.4, color: "rgba(255,255,255,0.62)" },
 
   scroll: { padding: 20, paddingBottom: 40, gap: spacing.lg },

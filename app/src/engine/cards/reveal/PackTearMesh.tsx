@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber/native";
 import type { SharedValue } from "react-native-reanimated";
 import { buildPackObject } from "./engine/buildPackObject";
 import { cardPackPersonality } from "./config/cardPack.config";
+import type { CategoryPersonality } from "./config/types";
 
 /**
  * Drives the real procedural foil-pack build (`buildPackObject`) from the same
@@ -31,8 +32,18 @@ import { cardPackPersonality } from "./config/cardPack.config";
  * needs `castShadow` + a configured shadow camera — r3f's shadow pipeline is off by default and
  * per-mesh flags alone do nothing without it.
  */
-export function PackTearMesh({ openProgress }: { openProgress: SharedValue<number> }) {
-  const pack = useMemo(() => buildPackObject(cardPackPersonality, null), []);
+export function PackTearMesh({
+  openProgress,
+  personality = cardPackPersonality,
+}: {
+  openProgress: SharedValue<number>;
+  /** Defaults to the base "Trading Cards" personality every single-pack rip outside Vault
+   * Break/Black Label already uses. The bulk run's intro tear (RunIntroStage) passes a
+   * tier-recolored variant instead — see bulk/tearPackPersonality.ts's own header for why this
+   * mesh, rather than each tier's own bespoke scene, is what the bulk intro reuses. */
+  personality?: CategoryPersonality;
+}) {
+  const pack = useMemo(() => buildPackObject(personality, null), [personality]);
 
   useEffect(() => () => pack.dispose(), [pack]);
 
