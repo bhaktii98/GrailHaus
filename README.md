@@ -251,7 +251,6 @@ Cutting scope was expected and is graded; this is the honest list, not a hidden 
   wired to a real notification.
 - **Marketplace free-text search** — cut per the brief's own P2 allowance ("list and buy is
   enough"); category/tier filtering shipped instead.
-- **Sneakers** — explicitly out of scope per the brief; not built.
 - **A single committed `schema.sql`** — the schema evolved as a sequence of small scripts against
   a live Supabase project rather than one authoritative migration file. Fine for this trial's
   single environment, a real gap for reproducing the schema from a clean database without walking
@@ -259,11 +258,6 @@ Cutting scope was expected and is graded; this is the honest list, not a hidden 
 - **Alt-account prevention** is detection-only (a recorded device ID on signup), not enforcement —
   an honest gap, not implied to be solved.
 
-**A real bug found and fixed along the way:** recurring drops originally read their
-`goes_live_at`/`ends_at` columns directly at purchase time — values set once and never updated
-once a pack becomes a *recurring* drop, meaning a recurring drop could actually be purchased at
-any time regardless of its real schedule. Fixed by recomputing the true current occurrence under
-the same row lock the purchase already takes, rather than trusting stale columns.
 
 **The design mistake behind the current bulk-reveal architecture:** the first version of the
 10-pack reveal kept every pack's full 3D scene (tear included) alive across a continuous scroll
