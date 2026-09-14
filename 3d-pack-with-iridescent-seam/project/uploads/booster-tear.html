@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pack Rip — swipe to tear</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+    "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js",
+    "three/addons/exporters/OBJExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js",
+    "three/addons/exporters/GLTFExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js"
+  },
+  "integrity": {
+    "https://unpkg.com/three@0.184.0/build/three.module.js": "sha384-8FCZ1eVO6it4+pbec2aDtnTrwjWXZLJRC+MAGCIPDgsYnUrl/E0A2YlF8ioMKI/J",
+    "https://unpkg.com/three@0.184.0/build/three.core.js": "sha384-dw2ooPewaEIrAgl6oFDBmmBWCE9oW9LxRGcfwZ0hLvEprzo202wXl7vCYHRlSnOT",
+    "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js": "sha384-4rziNxOBZKQ69i+w+f89KJ55TCYquwchVbByQwmaOeIOXdOU2PLDn3kOfXHwIJC9",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js": "sha384-nbwtoZENJD3Vq+ACK0CuGQdPMuDWHkamC2KJD70EV5nfg6jQjfppKOea07YJN+N3",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js": "sha384-VofkvpG6HERhFCYbsUOHeNXBCqID2nfqkQqnVzE1jc/oPcz+qJ13ADdXH08hE+cQ"
+  }
+}
+</script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#07050c;
+    -webkit-user-select:none;user-select:none}
+  three-d-stage:not(:defined){visibility:hidden}
+  three-d-stage{display:block;width:100vw;height:100vh;touch-action:none;background:transparent}
+  .layer{position:fixed;inset:0;pointer-events:none}
+  #vign{background:radial-gradient(58% 44% at 50% 42%, rgba(123,63,196,.20), rgba(7,5,12,0) 62%),
+    radial-gradient(120% 90% at 50% 120%, rgba(216,176,84,.10), rgba(7,5,12,0) 60%)}
+  #frame{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:space-between;
+    padding:22px 22px 30px;pointer-events:none;
+    font-family:"Cormorant Garamond",ui-serif,Georgia,serif;color:#f0e8d8}
+  .kicker{font:500 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.32em;color:#a58a5a;text-transform:uppercase}
+  h1{margin:8px 0 0;font-size:30px;font-weight:500;letter-spacing:.01em}
+  h1 em{font-style:italic;color:#d8b054}
+  .meta{display:flex;gap:18px;margin-top:10px;font:400 12px/1.5 ui-monospace,Menlo,monospace;color:#8f85a3;letter-spacing:.08em}
+  #cue{align-self:center;text-align:center;transition:opacity .35s}
+  #cue .swipe{font:500 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.28em;color:#cbb6ef;text-transform:uppercase}
+  #bar{width:132px;height:2px;margin:12px auto 0;background:rgba(203,182,239,.22);overflow:hidden;border-radius:2px}
+  #bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#d8b054,#e6b3ff)}
+  #again{position:fixed;left:50%;transform:translateX(-50%);bottom:34px;padding:13px 26px;
+    border:1px solid rgba(216,176,84,.45);border-radius:999px;background:rgba(20,12,34,.72);
+    color:#e8d9b4;font:500 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;text-transform:uppercase;
+    cursor:pointer;opacity:0;pointer-events:none;transition:opacity .4s;backdrop-filter:blur(8px)}
+  #again[data-on]{opacity:1;pointer-events:auto}
+  a{color:#d8b054}a:hover{color:#e8d9b4}
+</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+<three-d-stage name="grailhaus-pack" background="transparent"></three-d-stage>
+<div class="layer" id="vign"></div>
+<div id="frame">
+  <div>
+    <div class="kicker">Sealed · Series I</div>
+    <h1>Obsidian <em>Chase</em> Pack</h1>
+    <div class="meta"><span>5 CARDS</span><span>1 GUARANTEED HOLO</span></div>
+  </div>
+  <div id="cue">
+    <div class="swipe">Swipe along the light</div>
+    <div id="bar"><i></i></div>
+  </div>
+  <div></div>
+</div>
+<button id="again">Reseal</button>
+<script src="./three-d-stage.js"></script>
+<script type="module">
+  import * as THREE from 'three';
+  import { buildRipPack } from './rn/RipPack.js';
+  import { createTearPhysics } from './rn/tearPhysics.js';
+
+  const stage = document.querySelector('three-d-stage');
+  await stage.ready;
+
+  const pack = buildRipPack();
+  stage.setObject(pack.group);
+
+  const loader = new THREE.TextureLoader();
+  const [front, back, card, shine] = await Promise.all([
+    loader.loadAsync('./assets/pack-front.png'),
+    loader.loadAsync('./assets/pack-back.png'),
+    loader.loadAsync('./assets/card-back.png'),
+    loader.loadAsync('./assets/shine.png'),
+  ]);
+  pack.setTextures({ front, back, card, shine });
+
+  // Dark jeweller's box lighting: one warm key, a violet rim, no ambient wash.
+  const scene = stage._scene;
+  scene.children.filter((o) => o.isLight).forEach((l) => scene.remove(l));
+  const key = new THREE.DirectionalLight(0xfff0d8, 3.1);
+  key.position.set(0.22, 0.42, 0.36);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.bias = -0.0004;
+  key.shadow.camera.left = key.shadow.camera.bottom = -0.2;
+  key.shadow.camera.right = key.shadow.camera.top = 0.2;
+  key.shadow.camera.updateProjectionMatrix();
+  scene.add(key);
+  stage._key = key;
+  const rim = new THREE.DirectionalLight(0x8f5cff, 1.5);
+  rim.position.set(-0.34, 0.12, -0.28);
+  scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0x2a1b47, 0x090610, 0.55));
+  stage._ground.material.opacity = 0.55;
+
+  const controls = stage._controls;
+  controls.enableRotate = false;
+  controls.enableZoom = false;
+  controls.enablePan = false;
+  const camera = stage._camera;
+  const CENTER_Y = pack.size.H / 2 + 0.005;
+  camera.position.set(0, CENTER_Y + 0.022, 0.295);
+  controls.target.set(0, CENTER_Y, 0);
+  controls.update();
+
+  const bar = document.querySelector('#bar i');
+  const cue = document.getElementById('cue');
+  const again = document.getElementById('again');
+
+  const buzz = (ms, amp = 1) => { if (navigator.vibrate) navigator.vibrate(Math.round(ms * amp)); };
+
+  const tear = createTearPhysics({
+    travel: Math.min(260, innerWidth * 0.62),
+    on: {
+      tick: (step) => buzz(6 + step * 2),                 // light tick as the foil parts
+      give: () => buzz(24),                              // the moment it gives
+      complete: () => { buzz(38); again.setAttribute('data-on', ''); },
+      reseal: () => { again.removeAttribute('data-on'); },
+    },
+  });
+
+  // 1:1 pointer tracking along the tear axis.
+  let id = null, x0 = 0, lastX = 0, lastT = 0, vx = 0;
+  stage.addEventListener('pointerdown', (e) => {
+    id = e.pointerId; x0 = lastX = e.clientX; lastT = e.timeStamp; vx = 0;
+    stage.setPointerCapture(id);
+    tear.begin();
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== id) return;
+    const dt = Math.max(1, e.timeStamp - lastT);
+    vx = (e.clientX - lastX) / dt;
+    lastX = e.clientX; lastT = e.timeStamp;
+    tear.move(e.clientX - x0);
+  });
+  const up = (e) => {
+    if (e.pointerId !== id) return;
+    id = null;
+    tear.end(e.timeStamp - lastT > 90 ? 0 : vx);          // stale pointer = not a flick
+  };
+  stage.addEventListener('pointerup', up);
+  stage.addEventListener('pointercancel', up);
+  again.addEventListener('click', () => { tear.reset(); pack.setProgress(0); again.removeAttribute('data-on'); });
+
+  Object.assign(window, { __pack: pack, __tear: tear });
+
+  let prev = performance.now();
+  (function frame(now) {
+    const dt = (now - prev) / 1000; prev = now;
+    tear.update(dt);
+    const p = tear.progress;
+    pack.setProgress(p);
+    pack.setTime(now / 1000);
+    bar.style.width = (p * 100).toFixed(1) + '%';
+    cue.style.opacity = p > 0.05 ? 0 : 1;
+    camera.position.z = 0.295 - p * 0.025;                  // a breath closer as it opens
+    camera.position.y = CENTER_Y + 0.022 + p * 0.012;
+    camera.lookAt(0, CENTER_Y + p * 0.012, 0);
+    requestAnimationFrame(frame);
+  })(prev);
+</script>
+</body>
+</html>

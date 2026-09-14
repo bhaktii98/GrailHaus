@@ -1,14 +1,16 @@
+import { useMemo } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { OwnedItem, PulledOwnedItem } from "@grailhaus/shared";
+import { groupBulkRun } from "@grailhaus/shared";
 import { usePackFlowViewModel } from "../viewmodels/usePackFlowViewModel";
 import { RevealEngine } from "../engine/core/RevealEngine";
 import { CardFlowEngine } from "../engine/cards/CardFlowEngine";
 import { VaultBreakFlowEngine } from "../engine/cards/VaultBreakFlowEngine";
 import { BatchSummaryScreen } from "../engine/cards/BatchSummaryScreen";
-import { BulkRunOrchestrator } from "../engine/cards/bulk/BulkRunOrchestrator";
 import { BlackLabelFlowEngine } from "../engine/cards/BlackLabelFlowEngine";
+import { BulkRunOrchestrator } from "../engine/cards/bulk/BulkRunOrchestrator";
 import { ScreenBackground } from "../components/ScreenBackground";
 import { colors, spacing, typography } from "../theme/tokens";
 import { reveal as revealCopy } from "../content/copy";
@@ -32,6 +34,20 @@ type Nav = NativeStackNavigationProp<AppStackParamList, "Reveal">;
 export function RevealScreen() {
   const navigation = useNavigation<Nav>();
   const flow = usePackFlowViewModel();
+
+  // A batch's own reveal order: every grail across all 10 packs first (weakest to strongest, the
+  // climax at the end of that block — same escalation the old Grail Hunt used), then every
+  // prime, then every core. `flow.items` (packs[currentPackIndex]) would only ever be one pack's
+  // own handful of cards in their own pack order — this flattens and regroups across the whole
+  // batch instead, since there's one tear for the whole bundle, not one per pack. Reference-
+  // stable across pack-index changes (keyed on `flow.packs`, not `flow.currentPackIndex`) so this
+  // doesn't recompute on every advance.
+  const batchOrderedItems = useMemo(() => {
+    if (!flow.isBatch) return null;
+    const { grails, primes, cores } = groupBulkRun(flow.packs);
+    return [...grails, ...primes, ...cores];
+  }, [flow.isBatch, flow.packs]);
+
   // "Tabs" is the root stack's own first screen (see AppNavigator) — navigating to it from a
   // pushed screen like this one pops back to it rather than pushing a duplicate, but its nested
   // tab/screen isn't expressible in AppStackParamList's types, so this jump is deliberately
@@ -136,31 +152,6 @@ export function RevealScreen() {
     );
   }
 
-  /**
-   * A bulk (10-pack) card purchase runs the curated Grail Hunt presentation instead of replaying a
-   * per-pack reveal ten times: grails from every pack first (weakest → strongest), then the prime
-   * grid, then the core list, then the same batch summary above.
-   *
-   * This is a *presentation* branch and nothing more. Both paths render the identical
-   * server-generated, already-persisted `flow.packs`; the strategy only decides what order and
-   * with how much ceremony those results are shown. Watches never reach it (they can't buy in
-   * bulk), and a single pack never reaches it either — `strategy` is `SINGLE_PACK` whenever
-   * there's one pack, so the traditional sequential rip below is completely untouched.
-   */
-  if (flow.strategy === "BULK_GRAIL_HUNT" && flow.bulkReveal && flow.sku.category === "cards") {
-    return (
-      <BulkRunOrchestrator
-        sku={flow.sku}
-        packs={flow.packs}
-        bulkReveal={flow.bulkReveal}
-        onGoToStage={(stage) => void flow.goToBulkStage(stage)}
-        onAdvanceStage={() => void flow.advanceBulkStage()}
-        onRevealGrail={(id) => void flow.revealGrail(id)}
-        onSkipToResults={flow.skipToResults}
-      />
-    );
-  }
-
   if (!flow.items) {
     return (
       <ScreenBackground>
@@ -169,6 +160,25 @@ export function RevealScreen() {
           <Text style={styles.emptyNote}>{revealCopy.emptyNote}</Text>
         </View>
       </ScreenBackground>
+    );
+  }
+
+  // A bulk (10-pack) cards purchase gets the curated "Grail Hunt" run instead of the traditional
+  // sequential rip — grails across every pack first (escalating), then primes, then cores. Must
+  // come before the SINGLE_PACK branches below, which a bulk cards purchase would otherwise also
+  // match (they don't check quantity themselves).
+  if (flow.strategy === "BULK_GRAIL_HUNT" && flow.bulkReveal && flow.sku.category === "cards") {
+    return (
+      <BulkRunOrchestrator
+        sku={flow.sku}
+        packs={flow.packs}
+        gesture={flow.config.gesture}
+        bulkReveal={flow.bulkReveal}
+        onGoToStage={(stage) => void flow.goToBulkStage(stage)}
+        onAdvanceStage={() => void flow.advanceBulkStage()}
+        onRevealGrail={(id) => void flow.revealGrail(id)}
+        onSkipToResults={flow.skipToResults}
+      />
     );
   }
 
@@ -183,9 +193,19 @@ export function RevealScreen() {
     if (flow.sku.tier === "vault_break") {
       return (
         <VaultBreakFlowEngine
-          key={flow.purchaseId ?? undefined}
+          // Includes the pack index, not just the purchase id — a batch's ten packs share one
+          // purchaseId (one atomic purchase produced all of them), so without the index every
+          // pack after the first would reuse pack one's already-"summary"-phase instance instead
+          // of mounting fresh and starting its own tear (see CardFlowEngine's own key for the
+          // same reasoning).
+          key={`${flow.purchaseId ?? "none"}-${flow.currentPackIndex}`}
           sku={flow.sku}
-          items={flow.items}
+          items={batchOrderedItems ?? flow.items}
+          // Vault Break IS bulk-eligible (see VaultBreakFlowEngine's own header) — without these
+          // three, a 10-pack Vault Break buy silently rendered as if it were a single pack.
+          batchContext={flow.isBatch ? { index: flow.currentPackIndex, total: flow.quantity } : undefined}
+          onNextPack={flow.isBatch ? () => flow.advanceBatch() : undefined}
+          onSkipToResults={flow.isBatch ? flow.skipToResults : undefined}
           onFinished={handleFinished}
           onRipAgain={() => handleRipAgain(1)}
           onGoHome={handleGoHome}
@@ -197,12 +217,15 @@ export function RevealScreen() {
     if (flow.sku.tier === "black_label") {
       return (
         <BlackLabelFlowEngine
-          key={flow.purchaseId ?? undefined}
+          // Same reasoning as VaultBreakFlowEngine's own key just above — must include the pack
+          // index or every pack after the first reuses pack one's already-finished instance.
+          key={`${flow.purchaseId ?? "none"}-${flow.currentPackIndex}`}
           sku={flow.sku}
-          items={flow.items}
+          items={batchOrderedItems ?? flow.items}
           // Black Label IS bulk-eligible (see BlackLabelFlowEngine's own header) — without these
-          // two, a 10-pack Black Label buy silently rendered as if it were a single pack.
+          // three, a 10-pack Black Label buy silently rendered as if it were a single pack.
           batchContext={flow.isBatch ? { index: flow.currentPackIndex, total: flow.quantity } : undefined}
+          onNextPack={flow.isBatch ? () => flow.advanceBatch() : undefined}
           onSkipToResults={flow.isBatch ? flow.skipToResults : undefined}
           onFinished={handleFinished}
           onRipAgain={() => handleRipAgain(1)}
@@ -222,7 +245,7 @@ export function RevealScreen() {
       <CardFlowEngine
         key={`${flow.purchaseId ?? "none"}-${flow.currentPackIndex}`}
         sku={flow.sku}
-        items={flow.items}
+        items={batchOrderedItems ?? flow.items}
         config={flow.config}
         batchContext={flow.isBatch ? { index: flow.currentPackIndex, total: flow.quantity } : undefined}
         onNextPack={flow.isBatch ? () => flow.advanceBatch() : undefined}

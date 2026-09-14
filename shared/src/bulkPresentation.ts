@@ -34,9 +34,11 @@ export const GRAIL_TIER: RarityTierLevel = 3;
 export const BULK_QUANTITY = 10;
 
 /**
- * Which presentation a purchase gets. Derived from quantity alone: one pack is always the
- * traditional sequential rip, a bulk buy is always the curated run. Deliberately a function
- * rather than a constant so the single/bulk decision has exactly one definition across the app.
+ * Which presentation a purchase gets. A single pack (or a category without the curated bulk
+ * treatment) always gets the traditional sequential rip. A bulk (10-pack) cards purchase gets the
+ * curated "Grail Hunt" run instead — grails first (escalating), then primes, then cores — rather
+ * than tearing and revealing ten packs back to back. Kept as a function (not a constant) so the
+ * single/bulk decision still has exactly one definition across the app.
  */
 export function presentationStrategyFor(quantity: number): PresentationStrategy {
   return quantity > 1 ? "BULK_GRAIL_HUNT" : "SINGLE_PACK";

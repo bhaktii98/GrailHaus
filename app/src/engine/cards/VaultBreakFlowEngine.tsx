@@ -4,7 +4,7 @@ import type { PackSku, PulledOwnedItem } from "@grailhaus/shared";
 import { usePackFlowStore } from "../../state/packFlowStore";
 import { usePackFlowViewModel } from "../../viewmodels/usePackFlowViewModel";
 import { useCollectionViewModel } from "../../viewmodels/useCollectionViewModel";
-import { ProcessingView, ReadyView, SummaryView } from "./CardFlowEngine";
+import { ProcessingView, ReadyView, SummaryView, type BatchContext } from "./CardFlowEngine";
 import { VaultTearStage } from "./vaultReveal/VaultTearStage";
 import { VaultCardFanReveal } from "./vaultReveal/VaultCardFanReveal";
 import { playSfx } from "../../lib/sfx";
@@ -25,22 +25,34 @@ type Step = "processing" | "ready" | "tear" | "cards" | "summary";
  * on its own timed cue instead of a per-card swipe gesture (see that file's header). Every other
  * card tier keeps CardFlowEngine's own tear + swipe-through-cards flow unchanged; this tier gets
  * both a fancier tear and a fancier reveal.
+ *
+ * Vault Break IS bulk-eligible (PackDetailScreen's own `bulkEligible` — every card tier can batch
+ * now) — `batchContext`/`onSkipToResults` exist for exactly that: a 10-pack Vault Break buy needs
+ * the same "one big pack" ready screen and one-tear-then-straight-to-batch-summary handoff
+ * CardFlowEngine.tsx and BlackLabelFlowEngine already have, or it silently renders as if it were
+ * a single pack.
  */
 export function VaultBreakFlowEngine({
   sku,
   items,
+  batchContext,
   onFinished,
   onRipAgain,
   onGoHome,
   onViewCollection,
+  onSkipToResults,
+  onNextPack,
   isRipAgainWorking,
 }: {
   sku: PackSku;
   items: PulledOwnedItem[];
+  batchContext?: BatchContext;
   onFinished: () => void;
   onRipAgain: () => void;
   onGoHome: () => void;
   onViewCollection: () => void;
+  onSkipToResults?: () => void;
+  onNextPack?: () => void;
   isRipAgainWorking: boolean;
 }) {
   const setPhase = usePackFlowStore((s) => s.setPhase);
@@ -56,8 +68,13 @@ export function VaultBreakFlowEngine({
   );
   const [visibleStatusRows, setVisibleStatusRows] = useState(0);
 
-  // Same commons-first ordering as CardFlowEngine.orderedItems.
-  const orderedItems = useMemo(() => [...items].sort((a, b) => a.rarityTierLevel - b.rarityTierLevel), [items]);
+  // Same ordering rule as CardFlowEngine.orderedItems — commons-first for a standalone pack; a
+  // batch pack's `items` already arrives grouped grail-then-prime-then-core across the whole
+  // batch (see RevealScreen's own `batchOrderedItems`), so this keeps that order as-is.
+  const orderedItems = useMemo(
+    () => (batchContext ? items : [...items].sort((a, b) => a.rarityTierLevel - b.rarityTierLevel)),
+    [items, batchContext]
+  );
 
   // Same real-ownership math as CardFlowEngine: how many of each pulled id this account held
   // *before* this pack (`owned` already includes this pull's own copies).
@@ -93,14 +110,28 @@ export function VaultBreakFlowEngine({
 
   function handleTearComplete() {
     playSfx("packTear");
+    // Every pack of a batch still gets its own fanned reveal, same as a standalone pack —
+    // `onSkipToResults` is the explicit "Skip to results" link on ReadyView, never something a
+    // tear fires on its own (see CardFlowEngine's own handleTearComplete for the bug this matches
+    // the fix of: firing it here unconditionally skipped the reveal entirely after the first tear).
     setStep("cards");
   }
 
-  // Vault Break is never batched (see this file's header) — its own reveal's "Continue"/swipe-up
-  // goes straight to the portfolio instead of the results screen (SummaryView), same as a
-  // standalone CardFlowEngine pack.
+  // Mid-batch, this pack still needs its own recap + "next pack" handoff (SummaryView) — there's
+  // more of the purchase left to show. A standalone pack has nothing left to hand off to, so its
+  // own reveal goes straight to the portfolio instead of a results screen the user would just
+  // have to tap through again. (Previously always went to the portfolio — a real bug that ended
+  // a batch run after pack one's own reveal, before packs 2-10 were ever shown.)
   function handleCardsDone() {
-    onViewCollection();
+    // One reveal pass already covered the whole batch (every grail, then prime, then core,
+    // across all packs — see RevealScreen's own `batchOrderedItems`), so there's no "next pack"
+    // left to hand off to: straight to the terminal batch summary. A standalone pack instead
+    // goes to the portfolio, same as always.
+    if (batchContext && onSkipToResults) {
+      onSkipToResults();
+    } else {
+      onViewCollection();
+    }
   }
 
   if (step === "processing") {
@@ -108,7 +139,15 @@ export function VaultBreakFlowEngine({
   }
 
   if (step === "ready") {
-    return <ReadyView sku={sku} onBeginRip={handleBeginRip} onOpenLater={handleOpenLater} />;
+    return (
+      <ReadyView
+        sku={sku}
+        batchContext={batchContext}
+        onBeginRip={handleBeginRip}
+        onOpenLater={handleOpenLater}
+        onSkipToResults={batchContext ? onSkipToResults : undefined}
+      />
+    );
   }
 
   if (step === "tear") {
@@ -137,6 +176,8 @@ export function VaultBreakFlowEngine({
       sku={sku}
       items={orderedItems}
       priorCountById={priorCountById}
+      batchContext={batchContext}
+      onNextPack={onNextPack}
       onRipAgain={onRipAgain}
       onGoHome={onGoHome}
       onViewCollection={onViewCollection}

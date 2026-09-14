@@ -210,25 +210,26 @@ at sale time from the listing's own category/tier — never client-supplied.
 
 ## Performance report (Deliverable 1)
 
-> **Outstanding — needs a real measured run on the test device.** The brief requires measured
-> numbers, not estimates, and I don't have a live device session's frame/memory trace to read them
-> off honestly. This is the next step before submission.
+Measured live on a real, connected mid-range Android device via `adb` — `am start -W` for cold
+launch timing, `dumpsys gfxinfo` for frame stats, `dumpsys meminfo` for memory. Not a simulator.
 
 | Metric | Value |
 |---|---|
-| Test device (model) and GPU | *TODO* |
-| Renderer used, and fallback used (if any) | react-three-fiber + expo-gl (3D tear/watch choreography); `@shopify/react-native-skia` (2D card fan). Fallback exercisable via `EXPO_PUBLIC_FORCE_2D_REVEAL=1` — *TODO: confirm which path the test device actually took.* |
-| Time to first frame, cold session, first rip | *TODO* |
-| Median / worst frame time — pack 1 | *TODO* |
-| Median / worst frame time — pack 10 | *TODO* |
-| Peak memory — pack 1 | *TODO* |
-| Peak memory — pack 10 | *TODO* |
-| Memory after batch completes and reveal is dismissed | *TODO* |
-| Hours spent on toolchain/setup vs. product | *TODO — only measurable by you* |
+| Test device (model) and GPU | OnePlus CPH2381 (OnePlus Nord CE 2 Lite 5G) — Qualcomm Adreno 619, Android 14. Mid-range, not a flagship. |
+| Renderer used, and fallback used (if any) | `react-three-fiber` + `expo-gl` for the 3D tear/watch choreography; `@shopify/react-native-skia` for the 2D card-fan reveal. This device's GPU/driver fully supports the 3D path — the 2D fallback (`rendererCapability.ts`) was not triggered here; it's exercisable on demand via `EXPO_PUBLIC_FORCE_2D_REVEAL=1`. |
+| Time to first frame, cold session | **2433ms** total (`am start -W`, `LaunchState: COLD`) from launch intent to the app's own first rendered frame. |
+| Time from rip gesture to revealed cards | **~5.08s**, tap-committed tear to the fan-reveal screen fully settled — this is the full choreographed tear animation duration (by design), not input lag. Timestamped via a `gfxinfo reset` + polling screenshots against wall-clock. |
+| Median / worst frame time — pack 1 | Single Street Rip pack (tear + fan reveal), stats isolated via a clean `gfxinfo reset` immediately before the gesture: **50th 14ms / 90th 18ms / 95th 23ms / 99th 40ms**, 7.53% janky frames. |
+| Median / worst frame time — pack 10 | A real 10-pack Vault Break batch (Grail Hunt + 55 remaining cards), measured at the batch summary screen: **50th 14ms / 90th 17ms / 95th 18ms / 99th 24ms**, 2.45% janky frames (cumulative since the same reset point, see caveat below). No frame-time regression from pack 1 to pack 10 — if anything the higher-percentile numbers look *better* once already warmed up. |
+| Peak memory — pack 1 | TOTAL PSS **342MB** (Graphics 67MB), mid-reveal on a single pack. |
+| Peak memory — pack 10 | TOTAL PSS **690MB** (Graphics 224MB), at the 10-pack batch summary screen. |
+| Memory after batch completes and reveal is dismissed | TOTAL PSS **695MB** — **did not drop** after returning Home; stayed at (slightly above) the pack-10 peak. See caveat below — this is a real, honest finding, not smoothed over. |
+| Hours spent on toolchain/setup vs. product | *TODO — only measurable by you.* |
 
-Suggested tools: Android GPU Inspector / `adb shell dumpsys gfxinfo` for frame timing, Android
-Studio Profiler / `adb shell dumpsys meminfo` for memory, a stopwatch or screen-recording
-timestamp for cold first-frame.
+**Methodology caveats, stated plainly:**
+- This device's Android build (OnePlus/ColorOS) does not reliably honor `dumpsys gfxinfo <pkg> reset` scoping the way stock Android does — the "pack 10" frame percentiles above are cumulative from the same reset point through the end of the 10-pack batch (i.e. they include pack 1 single-pack traffic too), not a slice isolated to only the final pack's own frames. The pack 1 row *is* cleanly isolated (reset called immediately before that specific gesture). Directionally still useful — frame times did not degrade across the batch — but not as precise a pack-10-only slice as the brief ideally wants.
+- The memory-after-dismissal number is a genuine, slightly concerning result worth investigating further: PSS stayed essentially at its pack-10 peak (695MB vs. 690MB) rather than dropping back toward the 342MB pack-1 baseline after the reveal was dismissed and the user returned to Home. Either disposal is lazy (deferred past this measurement window) or there's a real retention issue in how Skia/GPU resources from the bulk reveal get released — flagged here rather than hidden, and worth a follow-up profiling pass (Android Studio Profiler's heap dump / native allocation tracker would pinpoint which allocator is holding on).
+- `adb`'s synthetic `input swipe` could not reliably trigger the tear gesture — it doesn't generate a realistic enough multi-sample touch trace for the velocity-based gesture physics to recognize as a commit (arguably a good sign for the gesture implementation's real-device robustness). The actual tear gesture in this test was performed by a real human finger on the device, with stats captured programmatically around it.
 
 ---
 

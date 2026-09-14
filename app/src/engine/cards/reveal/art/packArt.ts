@@ -37,6 +37,18 @@ const DESIGN_WIDTH = 800;
 const TEETH = 13;
 const BONE = '#f6eeda';
 
+// Linear-blends two hex colors — used to derive the pack body's light/mid tones from just the
+// two colors a personality actually configures (`palette.violet`/`violetDeep`), so the body,
+// crimp and header gradients below can keep their original multi-stop shape without every tier
+// needing to hand-author each intermediate stop itself.
+function mixHex(a: string, b: string, t: number): string {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const ar = (pa >> 16) & 255, ag = (pa >> 8) & 255, ab = pa & 255;
+  const br = (pb >> 16) & 255, bg = (pb >> 8) & 255, bb = pb & 255;
+  const r = Math.round(ar + (br - ar) * t), g = Math.round(ag + (bg - ag) * t), bl = Math.round(ab + (bb - ab) * t);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1)}`;
+}
+
 function goldStops(palette: PackPalette) {
   return [
     [0, palette.goldHi],
@@ -64,17 +76,22 @@ function silhouettePath(w: number, h: number, toothDepth: number) {
   return path;
 }
 
-function blackBase(canvas: SkCanvas, w: number, h: number) {
+function blackBase(canvas: SkCanvas, w: number, h: number, palette: PackPalette) {
+  // Same seven-stop shape as the original hand-authored gradient (dark at both edges, a raking
+  // brighter sweep through the middle-right) — every stop derived from just the two colors a
+  // personality configures, so a tier's own body colour actually shows instead of always this
+  // gradient's originally-hardcoded violet.
+  const mid = mixHex(palette.violetDeep, palette.violet, 0.62);
   canvas.drawRect(
     Skia.XYWHRect(0, 0, w, h),
     linearGradientPaint(0, 0, w, 0, [
-      [0, '#0d0618'],
-      [0.12, '#1c0e33'],
-      [0.3, '#2e1854'],
-      [0.5, '#241143'],
-      [0.72, '#301a58'],
-      [0.9, '#170b2a'],
-      [1, '#080310'],
+      [0, palette.violetDeep],
+      [0.12, mixHex(palette.violetDeep, palette.violet, 0.34)],
+      [0.3, mixHex(palette.violetDeep, palette.violet, 0.72)],
+      [0.5, mid],
+      [0.72, palette.violet],
+      [0.9, mixHex(palette.violetDeep, palette.violet, 0.28)],
+      [1, palette.violetDeep],
     ]),
   );
   canvas.drawRect(
@@ -87,8 +104,9 @@ function blackBase(canvas: SkCanvas, w: number, h: number) {
   );
 }
 
-function crimpBand(canvas: SkCanvas, w: number, y0: number, y1: number, top: boolean, s: number) {
+function crimpBand(canvas: SkCanvas, w: number, y0: number, y1: number, top: boolean, s: number, palette: PackPalette) {
   const h = y1 - y0;
+  const hi = mixHex(palette.violet, '#ffffff', 0.32);
   canvas.drawRect(
     Skia.XYWHRect(0, y0, w, h),
     linearGradientPaint(
@@ -97,8 +115,8 @@ function crimpBand(canvas: SkCanvas, w: number, y0: number, y1: number, top: boo
       0,
       y1,
       top
-        ? [[0, '#8a6fc4'], [0.5, '#4a2f80'], [1, '#180a2c']]
-        : [[0, '#180a2c'], [0.5, '#4a2f80'], [1, '#8a6fc4']],
+        ? [[0, hi], [0.5, palette.violet], [1, palette.violetDeep]]
+        : [[0, palette.violetDeep], [0.5, palette.violet], [1, hi]],
     ),
   );
   for (let x = 0; x < w; x += 11 * s) {
@@ -109,10 +127,14 @@ function crimpBand(canvas: SkCanvas, w: number, y0: number, y1: number, top: boo
   canvas.drawRect(Skia.XYWHRect(0, top ? y1 - 5 * s : y0, w, 5 * s), fillPaint('rgba(0,0,0,0.65)'));
 }
 
-function headerBand(canvas: SkCanvas, w: number, y0: number, y1: number, s: number) {
+function headerBand(canvas: SkCanvas, w: number, y0: number, y1: number, s: number, palette: PackPalette) {
   canvas.drawRect(
     Skia.XYWHRect(0, y0, w, y1 - y0),
-    linearGradientPaint(0, y0, 0, y1, [[0, '#6b46b0'], [0.5, '#57389a'], [1, '#3d2470']]),
+    linearGradientPaint(0, y0, 0, y1, [
+      [0, mixHex(palette.violet, '#ffffff', 0.2)],
+      [0.5, palette.violet],
+      [1, palette.violetDeep],
+    ]),
   );
   canvas.drawRect(
     Skia.XYWHRect(0, y0, w, y1 - y0),
@@ -229,12 +251,12 @@ export function drawFront(input: FaceInput): PixelImage {
 
   canvas.save();
   canvas.clipPath(silhouettePath(W, H, 30 * s), ClipOp.Intersect, true);
-  blackBase(canvas, W, H);
+  blackBase(canvas, W, H, palette);
 
   const flap = H * flapFrac, seam = H * seamFrac;
-  headerBand(canvas, W, 0, seam - 30 * s, s);
-  crimpBand(canvas, W, 0, flap, true, s);
-  crimpBand(canvas, W, H - flap, H, false, s);
+  headerBand(canvas, W, 0, seam - 30 * s, s, palette);
+  crimpBand(canvas, W, 0, flap, true, s, palette);
+  crimpBand(canvas, W, H - flap, H, false, s, palette);
   tearZone(canvas, W, seam, s);
 
   drawTrackedText(canvas, copy.wordmark, W / 2, 132 * s, {
@@ -262,7 +284,13 @@ export function drawFront(input: FaceInput): PixelImage {
   const frame = roundRectPath(px, py, pw, ph, 56 * s);
   canvas.save();
   canvas.clipPath(frame, ClipOp.Intersect, true);
-  canvas.drawRect(Skia.XYWHRect(px, py, pw, ph), linearGradientPaint(0, py, 0, py + ph, [[0, '#160a2c'], [1, '#0a0418']]));
+  canvas.drawRect(
+    Skia.XYWHRect(px, py, pw, ph),
+    linearGradientPaint(0, py, 0, py + ph, [
+      [0, mixHex(palette.violetDeep, '#000000', 0.15)],
+      [1, mixHex(palette.violetDeep, '#000000', 0.45)],
+    ]),
+  );
   if (logo) {
     const size = Math.min(pw, ph);
     const imgPaint = Skia.Paint();
@@ -304,13 +332,13 @@ export function drawBack(input: FaceInput): PixelImage {
 
   canvas.save();
   canvas.clipPath(silhouettePath(W, H, 30 * s), ClipOp.Intersect, true);
-  blackBase(canvas, W, H);
+  blackBase(canvas, W, H, palette);
   const flap = H * flapFrac, seam = H * seamFrac;
-  crimpBand(canvas, W, 0, flap, true, s);
-  crimpBand(canvas, W, H - flap, H, false, s);
+  crimpBand(canvas, W, 0, flap, true, s, palette);
+  crimpBand(canvas, W, H - flap, H, false, s, palette);
   tearZone(canvas, W, seam, s);
 
-  headerBand(canvas, W, 0, seam - 30 * s, s);
+  headerBand(canvas, W, 0, seam - 30 * s, s, palette);
   drawTrackedText(canvas, copy.backHeaderLine1, W / 2, 140 * s, {
     size: 24 * s, bold: true, letterSpacing: 8 * s, mono: true,
     shader: linearGradientShader(0, 118 * s, 0, 146 * s, goldStops(palette)),

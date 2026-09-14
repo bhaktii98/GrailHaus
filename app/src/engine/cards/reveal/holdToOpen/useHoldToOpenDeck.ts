@@ -27,7 +27,7 @@ interface RarityTuning {
   dim: number;
 }
 
-const TUNING: Record<CardRarity, RarityTuning> = {
+export const TUNING: Record<CardRarity, RarityTuning> = {
   // CORE still gets a light mote sparkle on open (no ring) — every reveal should feel like
   // something happened, not just the rarer ones.
   CORE: { rings: 0, motes: 6, dim: 0 },

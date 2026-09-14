@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -22,6 +23,12 @@ import { bulkRun as copy } from "../../../content/copy";
 import { tierRevealIdentity, type TierRevealIdentity } from "./tierPersonality";
 import { GrailAmbience } from "./GrailAmbience";
 import { GrailJourneyTracker } from "./GrailJourneyTracker";
+// Same rings/motes/sparkle flourish the single-pack fan reveal plays when a card opens — reused
+// here, not reimplemented, so a grail in the hunt earns the identical flourish a grail earns in a
+// standalone pack (see HoldToOpenFanReveal's own header). Everything around it — the golden room
+// glow, the journey tracker, the value footer — stays this stage's own.
+import { OpenFlourish, GrailSparkles } from "../reveal/holdToOpen/HoldToOpenFanReveal";
+import { TUNING } from "../reveal/holdToOpen/useHoldToOpenDeck";
 
 /**
  * Stage one of a bulk run, and the reason the feature exists: the grails from all ten packs,
@@ -272,6 +279,15 @@ function GrailReveal({
     );
   }, [phase, identity, intensity, anticipationMs, isFinal, item, onRevealed, rise, glow, flip, sheen, valueIn, surge]);
 
+  // The whole screen is the tap target, not just the card or the footer's own continue button —
+  // "waiting" starts the reveal, "revealed" advances, same as tapping the card/button directly
+  // used to. A tap on a more specific nested control (the skip link, the continue button itself)
+  // still wins over this — RN's responder system hands a touch to the innermost handler, not both.
+  function handleScreenTap() {
+    if (phase === "waiting") startReveal();
+    else if (phase === "revealed") onContinue();
+  }
+
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: interpolate(rise.value, [0, 1], [58, 0]) },
@@ -306,7 +322,11 @@ function GrailReveal({
   const cardHeight = isFinal ? 338 : 296;
 
   return (
-    <View style={[styles.fill, { backgroundColor: identity.backgroundHex }]}>
+    <Pressable
+      style={[styles.fill, { backgroundColor: identity.backgroundHex }]}
+      onPress={handleScreenTap}
+      disabled={phase === "revealing"}
+    >
       {/* The tier's room, behind everything — Black Label's heat-bled crimson, Vault Break's
           plum, the base pack's violet. */}
       <LinearGradient colors={identity.backdropGradient} style={StyleSheet.absoluteFill} pointerEvents="none" />
@@ -315,12 +335,33 @@ function GrailReveal({
         <GrailJourneyTracker index={revealIndex} total={totalRevealed} identity={identity} isFinal={isFinal} />
       </View>
 
-      <Pressable style={styles.stage} onPress={phase === "waiting" ? startReveal : undefined} disabled={phase !== "waiting"}>
+      <View style={styles.stage}>
         {/* The tier's atmosphere — ember field / vault shafts / foil motes. Sits behind the card
             and reacts to the turn via `surge`. */}
         <GrailAmbience identity={identity} intensity={intensity} surge={surge} />
 
-        <Animated.View style={[styles.glow, { backgroundColor: accent }, glowStyle]} pointerEvents="none" />
+        {/* A soft ring of light, not a flat filled disc — same "clear at the center, colour only
+            at the rim" shape the standalone fan reveal's own TypeGlow uses, so the ambient wash
+            behind a revealing grail reads as a glow, not a solid yellow blob sitting behind it. */}
+        <Animated.View style={[styles.glow, glowStyle]} pointerEvents="none">
+          <Svg width={300} height={300}>
+            <Defs>
+              <RadialGradient id="grailGlow" cx="50%" cy="50%" r="50%">
+                <Stop offset="0" stopColor={accent} stopOpacity={0} />
+                <Stop offset="0.62" stopColor={accent} stopOpacity={0.55} />
+                <Stop offset="1" stopColor={accent} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={150} cy={150} r={150} fill="url(#grailGlow)" />
+          </Svg>
+        </Animated.View>
+
+        {/* Same open-moment flourish a card gets in the standalone pack reveal — mounted the
+            instant the card starts turning, unmounted with the rest of this reveal once a fresh
+            grail replaces it (this whole tree is keyed per-grail one level up). */}
+        {phase !== "waiting" && (
+          <OpenFlourish rings={TUNING.GRAIL.rings} motes={TUNING.GRAIL.motes} hex={accent} cardY={0} />
+        )}
 
         <Animated.View style={cardStyle}>
           <Animated.View style={[StyleSheet.absoluteFill, backStyle]}>
@@ -358,10 +399,13 @@ function GrailReveal({
               </Animated.View>
             </PackFace>
           </Animated.View>
+          {/* Every grail here is GRAIL rarity by definition — the same twinkling sparkle overlay
+              a GRAIL pull gets in the standalone reveal, riding along with the card's own flip. */}
+          {phase !== "waiting" && <GrailSparkles cardW={cardWidth} cardH={cardHeight} />}
         </Animated.View>
 
         {phase === "waiting" && <Text style={styles.tapHint}>{copy.grail.hint}</Text>}
-      </Pressable>
+      </View>
 
       <View style={styles.footer}>
         <Animated.View style={[styles.valueBlock, valueStyle]}>
@@ -390,7 +434,7 @@ function GrailReveal({
           </Pressable>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
