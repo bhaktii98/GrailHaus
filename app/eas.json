@@ -10,6 +10,16 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://grailhaus-server.onrender.com",
+        "EXPO_PUBLIC_FORCE_2D_REVEAL": "0"
+      }
     }
   },
   "submit": {

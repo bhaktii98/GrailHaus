@@ -5,6 +5,10 @@ limited timed drops — rip them open through a category-specific real-time 3D/2
 they pull in a live-drifting portfolio, and trade it on a peer-to-peer marketplace. Two categories
 are fully shipped: **Trading Cards** and **Watches**, on one shared reveal engine.
 
+**[Walkthrough video](https://drive.google.com/file/d/1PEOb7EJeM2MhpnlCDUaog_SHnywmjJ7c/view?usp=sharing)** ·
+**[Admin dashboard](https://admin-dashboard-taupe-two-88.vercel.app)** (deployed on Vercel — magic-link login required, see [Setup](#setup)) ·
+**[Installable Android APK](https://expo.dev/artifacts/eas/k1BtTKcGK1eFzoqx-HdJGs8_HGMdU8kDtUB00Lzy3J8.apk)** (signed, standalone — wired to the live Render backend, no dev client/Metro needed; allow installs from unknown sources)
+
 ---
 
 ## Setup
