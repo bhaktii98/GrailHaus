@@ -6,6 +6,7 @@ they pull in a live-drifting portfolio, and trade it on a peer-to-peer marketpla
 are fully shipped: **Trading Cards** and **Watches**, on one shared reveal engine.
 
 **[Walkthrough video](https://drive.google.com/file/d/1PEOb7EJeM2MhpnlCDUaog_SHnywmjJ7c/view?usp=sharing)** ·
+**[Architecture document](https://drive.google.com/file/d/1-lOxmvauUWO2sJgS6oEDE19NGLiB66RQ/view?usp=sharing)** ·
 **[Admin dashboard](https://admin-dashboard-taupe-two-88.vercel.app)** (deployed on Vercel — magic-link login required, see [Setup](#setup)) ·
 **[Installable Android APK](https://expo.dev/artifacts/eas/k1BtTKcGK1eFzoqx-HdJGs8_HGMdU8kDtUB00Lzy3J8.apk)** (signed, standalone — wired to the live Render backend, no dev client/Metro needed; allow installs from unknown sources)
 
@@ -93,6 +94,11 @@ exactly against what should have succeeded. Restores every row it touches on exi
 ---
 
 ## Architecture overview
+
+Full write-up (reveal engine design, category personality, graphics library choice + fallback
+path, multi-pack pacing model, GPU memory across a batch, the atomic purchase path, the "why
+GrailHaus can't lose money" audit, animation/haptics stack): **[Architecture document](https://drive.google.com/file/d/1-lOxmvauUWO2sJgS6oEDE19NGLiB66RQ/view?usp=sharing)**.
+The summary below covers the same ground more briefly.
 
 ### The reveal engine
 
